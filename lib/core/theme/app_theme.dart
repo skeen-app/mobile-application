@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
+
 class AppTheme {
   const AppTheme._();
 
@@ -7,10 +9,12 @@ class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: const Color(0xFF12103A),
+      fontFamily: 'Poppins',
+      scaffoldBackgroundColor: AppColors.background,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF7C3AED),
+        seedColor: AppColors.violeta,
         brightness: Brightness.dark,
+        surface: AppColors.background,
       ),
     );
   }
