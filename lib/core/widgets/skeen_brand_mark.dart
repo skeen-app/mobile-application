@@ -3,41 +3,41 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'skeen_constellation.dart';
+
 class SkeenBrandMark extends StatefulWidget {
   const SkeenBrandMark({super.key});
 
   static const String _ellipsesAsset = 'assets/images/brand_ellipses.svg';
-  static const String _constellationAsset =
-      'assets/images/brand_constellation.svg';
 
   @override
   State<SkeenBrandMark> createState() => _SkeenBrandMarkState();
 }
 
 class _SkeenBrandMarkState extends State<SkeenBrandMark>
-    with TickerProviderStateMixin {
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ellipses;
-  late final AnimationController _stars;
 
   static const double _baseAngle = -22.31 * math.pi / 180;
+
+  // Ellipse pulse: scale ±2.5%, opacity fades between these bounds
+  // (brightest → soft) in sync with the expansion.
+  static const double _ellipseScaleAmp = 0.025;
+  static const double _ellipseOpacityMin = 0.55;
+  static const double _ellipseOpacityMax = 1.0;
 
   @override
   void initState() {
     super.initState();
     _ellipses = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 8),
-    )..repeat();
-    _stars = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 6),
     )..repeat();
   }
 
   @override
   void dispose() {
     _ellipses.dispose();
-    _stars.dispose();
     super.dispose();
   }
 
@@ -56,11 +56,18 @@ class _SkeenBrandMarkState extends State<SkeenBrandMark>
               animation: _ellipses,
               builder: (context, child) {
                 final t = _ellipses.value * 2 * math.pi;
-                final sway = math.sin(t) * 0.035;
-                final breath = 1 + math.sin(t * 0.8) * 0.015;
+                final pulse = (math.sin(t) + 1) / 2;
+                final scale = 1 + _ellipseScaleAmp * pulse;
+                final opacity = _ellipseOpacityMax -
+                    (_ellipseOpacityMax - _ellipseOpacityMin) * pulse;
+                final sway = math.sin(t * 0.5) * 0.025;
+
                 return Transform.rotate(
                   angle: _baseAngle + sway,
-                  child: Transform.scale(scale: breath, child: child),
+                  child: Transform.scale(
+                    scale: scale,
+                    child: Opacity(opacity: opacity, child: child),
+                  ),
                 );
               },
               child: SizedBox(
@@ -72,25 +79,10 @@ class _SkeenBrandMarkState extends State<SkeenBrandMark>
                 ),
               ),
             ),
-            AnimatedBuilder(
-              animation: _stars,
-              builder: (context, child) {
-                final t = _stars.value * 2 * math.pi;
-                final dy = math.sin(t) * 3.5;
-                final dx = math.cos(t * 0.7) * 2.5;
-                return Transform.translate(
-                  offset: Offset(dx, dy),
-                  child: child,
-                );
-              },
-              child: SizedBox(
-                width: constellationSize,
-                height: constellationSize * (65 / 77),
-                child: SvgPicture.asset(
-                  SkeenBrandMark._constellationAsset,
-                  fit: BoxFit.contain,
-                ),
-              ),
+            SizedBox(
+              width: constellationSize,
+              height: constellationSize * (65 / 77),
+              child: const SkeenConstellation(),
             ),
           ],
         );
