@@ -5,6 +5,8 @@ import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/auth/presentation/screens/permissions_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
+import '../../features/auth/presentation/screens/forgot_password_screen.dart';
+import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
 import '../../features/auth/presentation/screens/terms_screen.dart';
 import '../../features/detection/presentation/screens/calibrate_screen.dart';
@@ -44,6 +46,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/onboarding/terms',
         name: 'onboarding-terms',
         builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/forgot-password',
+        name: 'forgot-password',
+        builder: (context, state) => const ForgotPasswordScreen(),
+        routes: [
+          GoRoute(
+            path: 'success',
+            name: 'forgot-password-success',
+            builder: (context, state) => const ForgotPasswordSuccessScreen(),
+          ),
+        ],
       ),
       GoRoute(
         path: '/calibrate',
