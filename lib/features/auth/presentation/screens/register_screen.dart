@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -7,16 +8,18 @@ import '../../../../core/widgets/skeen_auth_header.dart';
 import '../../../../core/widgets/skeen_button.dart';
 import '../../../../core/widgets/skeen_password_field.dart';
 import '../../../../core/widgets/skeen_text_field.dart';
+import '../../application/auth_controller.dart';
 import '../../application/validators.dart';
+import '../../domain/registration_request.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameCtrl = TextEditingController();
   final _lastNameCtrl = TextEditingController();
   final _dniCtrl = TextEditingController();
@@ -75,14 +78,41 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _passwordError == null &&
       _confirmError == null;
 
-  void _onSubmit() {
+  Future<void> _onSubmit() async {
     setState(() => _submitted = true);
     if (!_isValid) return;
-    // Frontend-only: no backend wiring yet.
+
+    final controller = ref.read(authControllerProvider.notifier);
+    final ok = await controller.register(
+      RegistrationRequest(
+        name: _nameCtrl.text,
+        lastName: _lastNameCtrl.text,
+        dni: _dniCtrl.text,
+        email: _emailCtrl.text,
+        phone: _phoneCtrl.text,
+        password: _passwordCtrl.text,
+      ),
+    );
+
+    if (!mounted) return;
+    if (ok) {
+      context.go('/register/success');
+    } else {
+      final failure = ref.read(authControllerProvider).failure;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(failure?.message ?? 'Registration failed'),
+          backgroundColor: AppColors.fucsia,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSubmitting = ref.watch(
+      authControllerProvider.select((s) => s.isSubmitting),
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -207,6 +237,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   SkeenButton.primary(
                     label: 'Continue',
                     onPressed: _onSubmit,
+                    isLoading: isSubmitting,
                   ),
                   const SizedBox(height: 24),
                   Center(

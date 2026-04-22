@@ -26,6 +26,9 @@ dependencies:
   # SVG rendering
   flutter_svg: ^2.2.4
 
+  # Local key-value storage (auth token persistence)
+  shared_preferences: ^2.3.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
