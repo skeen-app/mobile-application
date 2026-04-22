@@ -7,6 +7,7 @@ import '../../features/auth/presentation/screens/permissions_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
 import '../../features/auth/presentation/screens/terms_screen.dart';
+import '../../features/detection/presentation/screens/calibrate_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -43,6 +44,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/onboarding/terms',
         name: 'onboarding-terms',
         builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/calibrate',
+        name: 'calibrate',
+        builder: (context, state) => const CalibrateScreen(),
       ),
     ],
   );

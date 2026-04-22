@@ -27,7 +27,7 @@ class _SkeenStarFieldState extends State<SkeenStarField>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 14),
-    )..repeat();
+    )..repeat(reverse: true);
 
     final rng = math.Random(widget.seed);
     _sparkles = List.generate(widget.density, (i) {

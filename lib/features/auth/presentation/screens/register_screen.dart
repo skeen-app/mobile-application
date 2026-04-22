@@ -96,7 +96,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     if (!mounted) return;
     if (ok) {
-      context.go('/register/success');
+      context.go('/onboarding/permissions');
     } else {
       final failure = ref.read(authControllerProvider).failure;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -57,7 +58,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   _PermissionCard(
                     title: 'Camera',
                     description: 'To scan and analyze lunars',
-                    icon: Icons.photo_camera_outlined,
+                    iconPath: 'assets/images/camera_icon.svg',
                     iconBackground: const Color(0xFF381E75),
                     value: _camera,
                     onChanged: (v) => setState(() => _camera = v),
@@ -66,7 +67,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   _PermissionCard(
                     title: 'Gallery',
                     description: 'To scan and analyze lunars',
-                    icon: Icons.image_outlined,
+                    iconPath: 'assets/images/gallery_icon.svg',
                     iconBackground: const Color(0xFF172F5A),
                     value: _gallery,
                     onChanged: (v) => setState(() => _gallery = v),
@@ -75,7 +76,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   _PermissionCard(
                     title: 'Notifications',
                     description: 'To scan and analyze lunars',
-                    icon: Icons.notifications_none_outlined,
+                    iconPath: 'assets/images/notifications_icon.svg',
                     iconBackground: const Color(0xFF432338),
                     value: _notifications,
                     onChanged: (v) => setState(() => _notifications = v),
@@ -142,7 +143,7 @@ class _PermissionCard extends StatelessWidget {
   const _PermissionCard({
     required this.title,
     required this.description,
-    required this.icon,
+    required this.iconPath,
     required this.iconBackground,
     required this.value,
     required this.onChanged,
@@ -150,7 +151,7 @@ class _PermissionCard extends StatelessWidget {
 
   final String title;
   final String description;
-  final IconData icon;
+  final String iconPath;
   final Color iconBackground;
   final bool value;
   final ValueChanged<bool> onChanged;
@@ -174,7 +175,7 @@ class _PermissionCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
             ),
             alignment: Alignment.center,
-            child: Icon(icon, color: AppColors.violetaClaro, size: 28),
+            child: SvgPicture.asset(iconPath, width: 28, height: 28),
           ),
           const SizedBox(width: 16),
           Expanded(
