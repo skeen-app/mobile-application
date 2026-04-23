@@ -59,9 +59,8 @@ class AuthController extends StateNotifier<AuthState> {
     state = state.copyWith(status: AuthStatus.submitting);
     try {
       final response = await _api.register(request);
-      // If the backend doesn't echo the user back, build it from the request
-      // so downstream screens (e.g. registration_success) still have data.
-      final user = response.user ??
+      final user =
+          response.user ??
           RegisteredUser(
             id: 'local',
             name: request.name.trim(),

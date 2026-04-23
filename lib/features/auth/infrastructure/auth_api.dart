@@ -28,18 +28,30 @@ class AuthApi {
   final http.Client _client;
 
   Future<AuthApiResponse> register(RegistrationRequest request) async {
-    return _post('/auth/register', request.toJson(), isLogin: false);
+    final res = await _send('/auth/register', request.toJson());
+    return _parseSession(res);
   }
 
   Future<AuthApiResponse> login(LoginRequest request) async {
-    return _post('/auth/login', request.toJson(), isLogin: true);
+    final res = await _send('/auth/login', request.toJson());
+    return _parseSession(res);
   }
 
-  Future<AuthApiResponse> _post(
-    String path,
-    Map<String, dynamic> body, {
-    required bool isLogin,
-  }) async {
+  AuthApiResponse _parseSession(http.Response res) {
+    final json = _decodeJson(res);
+    final tokenJson = json['token'];
+    if (tokenJson is! Map<String, dynamic>) {
+      throw const ServerFailure('Malformed response: missing token');
+    }
+    final token = AuthToken.fromJson(tokenJson);
+    final userJson = json['user'];
+    final user = userJson is Map<String, dynamic>
+        ? RegisteredUser.fromJson(userJson)
+        : null;
+    return AuthApiResponse(token: token, user: user);
+  }
+
+  Future<http.Response> _send(String path, Map<String, dynamic> body) async {
     final http.Response res;
     try {
       res = await _client
@@ -56,29 +68,9 @@ class AuthApi {
     }
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return _parseSuccess(
-        res,
-        fallbackEmail: isLogin ? body['email'] as String? : null,
-      );
+      return res;
     }
-
     throw _mapError(res, path: path);
-  }
-
-  AuthApiResponse _parseSuccess(http.Response res, {String? fallbackEmail}) {
-    final json = _decodeJson(res);
-    final tokenJson = json['token'];
-    if (tokenJson is! Map<String, dynamic>) {
-      throw const ServerFailure('Malformed response: missing token');
-    }
-    final token = AuthToken.fromJson(tokenJson);
-
-    final userJson = json['user'];
-    final user = userJson is Map<String, dynamic>
-        ? RegisteredUser.fromJson(userJson)
-        : null;
-
-    return AuthApiResponse(token: token, user: user);
   }
 
   AuthFailure _mapError(http.Response res, {required String path}) {
