@@ -14,4 +14,13 @@ class RegistrationRequest {
   final String email;
   final String phone;
   final String password;
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'lastName': lastName,
+        'dni': dni,
+        'email': email,
+        'phone': phone,
+        'password': password,
+      };
 }

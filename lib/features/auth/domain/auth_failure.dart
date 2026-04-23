@@ -19,3 +19,18 @@ class EmailAlreadyRegisteredFailure extends AuthFailure {
   const EmailAlreadyRegisteredFailure()
       : super('This email is already registered');
 }
+
+class InvalidCredentialsFailure extends AuthFailure {
+  const InvalidCredentialsFailure()
+      : super('Invalid email or password');
+}
+
+class ServerFailure extends AuthFailure {
+  const ServerFailure([super.message = 'The server is having trouble']);
+}
+
+/// Generic API failure used when the backend returns a 4xx without a
+/// specific known code.
+class AuthApiFailure extends AuthFailure {
+  const AuthApiFailure(super.message);
+}

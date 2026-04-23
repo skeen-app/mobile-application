@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/skeen_alert_dialog.dart';
 import '../../../../core/widgets/skeen_auth_header.dart';
 import '../../../../core/widgets/skeen_button.dart';
 import '../../../../core/widgets/skeen_password_field.dart';
 import '../../../../core/widgets/skeen_text_field.dart';
+import '../../application/auth_controller.dart';
 import '../../application/validators.dart';
+import '../../domain/login_request.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
 
@@ -43,14 +47,37 @@ class _LoginScreenState extends State<LoginScreen> {
 
   bool get _isValid => _emailError == null && _passwordError == null;
 
-  void _onSubmit() {
+  Future<void> _onSubmit() async {
     setState(() => _submitted = true);
     if (!_isValid) return;
-    // Frontend-only: no backend wiring yet.
+
+    final controller = ref.read(authControllerProvider.notifier);
+    final ok = await controller.login(
+      LoginRequest(
+        email: _emailCtrl.text.trim(),
+        password: _passwordCtrl.text,
+      ),
+    );
+
+    if (!mounted) return;
+    if (ok) {
+      // TODO: replace with `/home` once the Patient context lands.
+      context.go('/onboarding/permissions');
+    } else {
+      final failure = ref.read(authControllerProvider).failure;
+      await SkeenAlertDialog.showError(
+        context,
+        title: "We couldn't log you in",
+        message: failure?.message ?? 'Please check your credentials and try again.',
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSubmitting = ref.watch(
+      authControllerProvider.select((s) => s.isSubmitting),
+    );
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -126,6 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SkeenButton.primary(
                     label: "Let's get started!",
                     onPressed: _onSubmit,
+                    isLoading: isSubmitting,
                   ),
                   const SizedBox(height: 24),
                   Center(

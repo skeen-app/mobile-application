@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/skeen_alert_dialog.dart';
 import '../../../../core/widgets/skeen_auth_header.dart';
 import '../../../../core/widgets/skeen_button.dart';
 import '../../../../core/widgets/skeen_password_field.dart';
@@ -99,11 +100,10 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       context.go('/onboarding/permissions');
     } else {
       final failure = ref.read(authControllerProvider).failure;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(failure?.message ?? 'Registration failed'),
-          backgroundColor: AppColors.fucsia,
-        ),
+      await SkeenAlertDialog.showError(
+        context,
+        title: 'We could not create your account',
+        message: failure?.message ?? 'Please try again in a moment.',
       );
     }
   }
