@@ -29,11 +29,11 @@ class ScanAMoleCard extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(
-                width: 92,
+                width: 78,
                 height: 85,
                 child: _TelescopeStage(),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 4),
               const Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -99,14 +99,17 @@ class _TelescopeStage extends StatelessWidget {
           child: SkeenStarField(seed: 11, density: 12),
         ),
         Positioned.fill(
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: SvgPicture.asset(
-              'assets/images/home/scan_telescope.svg',
-              fit: BoxFit.contain,
-              colorFilter: const ColorFilter.mode(
-                AppColors.violetaClaro,
-                BlendMode.srcIn,
+          child: Center(
+            child: SizedBox(
+              width: 36,
+              height: 36,
+              child: SvgPicture.asset(
+                'assets/images/home/telescopy.svg',
+                fit: BoxFit.contain,
+                colorFilter: const ColorFilter.mode(
+                  AppColors.violetaClaro,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
           ),

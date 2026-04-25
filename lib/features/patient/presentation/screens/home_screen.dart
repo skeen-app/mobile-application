@@ -21,9 +21,10 @@ import '../widgets/temperature_card.dart';
 /// Home dashboard — Patient bounded context.
 ///
 /// Composes the greeting, primary scan CTA, quick actions, environment
-/// reading, body-map preview and the shared bottom nav. Routes for the
-/// secondary surfaces (scan, upload, reminder, body map full view) are wired
-/// through `go_router` named destinations declared in `app_router.dart`.
+/// reading, body-map preview and the shared bottom nav. Responsive layout:
+/// `LayoutBuilder` + `IntrinsicHeight` + `Spacer` distribute extra vertical
+/// space so the dashboard fills the viewport on tall devices, and
+/// `SingleChildScrollView` engages on shorter ones.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
@@ -52,63 +53,84 @@ class HomeScreen extends ConsumerWidget {
             child: Column(
               children: [
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        HomeGreeting(
-                          firstName: firstName,
-                          hasNotifications: true,
-                          onNotificationsTap: () {},
-                        ),
-                        const SizedBox(height: 22),
-                        ScanAMoleCard(
-                          onPressed: () => context.pushNamed('scan-a-mole'),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: QuickActionTile(
-                                title: 'Upload a photo',
-                                subtitle: 'from your gallery',
-                                iconAsset:
-                                    'assets/images/home/upload_icon.svg',
-                                iconBackgroundColor: const Color(0xFF172F5A),
-                                iconColor: AppColors.turquesa,
-                                onPressed: () =>
-                                    context.pushNamed('upload-photo'),
+                  child: LayoutBuilder(
+                    builder: (context, viewport) {
+                      return SingleChildScrollView(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minHeight: viewport.maxHeight,
+                          ),
+                          child: IntrinsicHeight(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(20, 12, 20, 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  HomeGreeting(
+                                    firstName: firstName,
+                                    hasNotifications: true,
+                                    onNotificationsTap: () {},
+                                  ),
+                                  const SizedBox(height: 18),
+                                  ScanAMoleCard(
+                                    onPressed: () =>
+                                        context.pushNamed('scan-a-mole'),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: QuickActionTile(
+                                          title: 'Upload a photo',
+                                          subtitle: 'from your gallery',
+                                          iconAsset:
+                                              'assets/images/home/upload_icon.svg',
+                                          iconBackgroundColor:
+                                              const Color(0xFF172F5A),
+                                          iconColor: AppColors.turquesa,
+                                          onPressed: () =>
+                                              context.pushNamed('upload-photo'),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: QuickActionTile(
+                                          title: 'Reminder',
+                                          subtitle: 'set up a check-in',
+                                          iconAsset:
+                                              'assets/images/home/calendar_icon.svg',
+                                          iconBackgroundColor:
+                                              const Color(0xFF4C1A47),
+                                          iconColor: AppColors.fucsia,
+                                          onPressed: () =>
+                                              context.pushNamed('reminder'),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  _TemperatureSlot(environment: environment),
+                                  const SizedBox(height: 18),
+                                  _BodyMapSlot(
+                                    summaries: summariesAsync,
+                                    counts: countsAsync,
+                                    onCompleteView: () =>
+                                        context.pushNamed('body-map'),
+                                    onAddNew: () =>
+                                        context.pushNamed('scan-a-mole'),
+                                  ),
+                                  // Absorbs any remaining vertical space so
+                                  // the dashboard fills the viewport without
+                                  // a visible blank gap.
+                                  const Spacer(),
+                                ],
                               ),
                             ),
-                            const SizedBox(width: 15),
-                            Expanded(
-                              child: QuickActionTile(
-                                title: 'Reminder',
-                                subtitle: 'set up a check-in',
-                                iconAsset:
-                                    'assets/images/home/calendar_icon.svg',
-                                iconBackgroundColor: const Color(0xFF4C1A47),
-                                iconColor: AppColors.fucsia,
-                                onPressed: () =>
-                                    context.pushNamed('reminder'),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                        const SizedBox(height: 18),
-                        _TemperatureSlot(environment: environment),
-                        const SizedBox(height: 28),
-                        _BodyMapSlot(
-                          summaries: summariesAsync,
-                          counts: countsAsync,
-                          onCompleteView: () =>
-                              context.pushNamed('body-map'),
-                          onAddNew: () => context.pushNamed('scan-a-mole'),
-                        ),
-                        const SizedBox(height: 24),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                 ),
                 SkeenBottomNav(
