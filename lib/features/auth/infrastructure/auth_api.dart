@@ -8,6 +8,7 @@ import '../../../core/network/api_exception.dart';
 import '../domain/auth_failure.dart';
 import '../domain/auth_token.dart';
 import '../domain/login_request.dart';
+import '../domain/logout_result.dart';
 import '../domain/registered_user.dart';
 import '../domain/registration_request.dart';
 
@@ -37,13 +38,20 @@ class AuthApi {
     return _parseSession(res);
   }
 
-  /// Best-effort sign-out. The endpoint is not yet implemented on the
-  /// backend; the client therefore swallows network/server errors so the
-  /// caller can always proceed to clear local state. The token is sent in
-  /// the `Authorization` header so the backend can revoke it once supported.
-  Future<void> logout({required AuthToken token}) async {
+  /// Revokes the Firebase refresh tokens server-side. The backend validates
+  /// the bearer (`check_revoked=True`) and on success returns a
+  /// [LogoutResult] with the revocation timestamp.
+  ///
+  /// Local-first contract: the caller (`AuthController.signOut`) always
+  /// clears local credentials regardless of the network outcome. So:
+  ///  - HTTP 200 → typed result returned.
+  ///  - HTTP 401 (token already revoked / expired / invalid) → treated as a
+  ///    successful local logout; the device session must still be cleared.
+  ///  - Any other failure → returns `LogoutResult.localOnly()`.
+  Future<LogoutResult> logout({required AuthToken token}) async {
+    final http.Response res;
     try {
-      await _client
+      res = await _client
           .post(
             ApiConfig.uri('/auth/logout'),
             headers: {
@@ -53,8 +61,20 @@ class AuthApi {
           )
           .timeout(ApiConfig.defaultTimeout);
     } catch (_) {
-      // Logout is local-first: a failed remote revoke must not block the
-      // user from leaving the session on this device.
+      return const LogoutResult.localOnly();
+    }
+
+    if (res.statusCode == 401) {
+      // Token already invalid server-side — local revoke still proceeds.
+      return const LogoutResult.localOnly();
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return const LogoutResult.localOnly();
+    }
+    try {
+      return LogoutResult.fromJson(_decodeJson(res));
+    } catch (_) {
+      return const LogoutResult.localOnly();
     }
   }
 

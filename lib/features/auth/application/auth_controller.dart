@@ -117,8 +117,14 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
-  /// Local-first logout: invokes the (placeholder) backend revoke, then
-  /// always clears persisted credentials so the device returns to anon state.
+  /// Revokes the session both server-side (Firebase refresh tokens) and
+  /// locally. After this call the router's auth-guard redirects any
+  /// protected location back to the onboarding screen, so the device cannot
+  /// re-enter authenticated routes via the back stack.
+  ///
+  /// Local clean-up always runs, even when the remote revoke fails — a
+  /// failed network call must not strand the user in a half-signed-out
+  /// state on this device.
   Future<void> signOut() async {
     final token = state.token;
     if (token != null) {
