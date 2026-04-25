@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Location: home dashboard fetches local UV index + temperature -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Network: weather forecast API -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="skeen"
         android:name="${applicationName}"

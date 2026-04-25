@@ -1,0 +1,247 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../../../core/theme/app_colors.dart';
+import '../../domain/environment_reading.dart';
+import 'uv_index_dial.dart';
+
+/// Combined temperature + UV + SPF guidance card on the home dashboard.
+///
+/// Renders three states from `environmentProvider`: loaded reading, loading
+/// shimmer, and error fallback (e.g. denied location permission).
+class TemperatureCard extends StatelessWidget {
+  const TemperatureCard.loaded({super.key, required EnvironmentReading reading})
+      : _reading = reading,
+        _isLoading = false,
+        _errorLabel = null;
+
+  const TemperatureCard.loading({super.key})
+      : _reading = null,
+        _isLoading = true,
+        _errorLabel = null;
+
+  const TemperatureCard.error({super.key, required String message})
+      : _reading = null,
+        _isLoading = false,
+        _errorLabel = message;
+
+  final EnvironmentReading? _reading;
+  final bool _isLoading;
+  final String? _errorLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 138),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1444),
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: const Color(0xFF5D3034)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: _buildLeft()),
+          const SizedBox(width: 8),
+          if (_reading != null)
+            UvIndexDial(uvIndex: _reading.uvIndex)
+          else
+            const SizedBox(width: 96, height: 96),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLeft() {
+    if (_isLoading) return const _LoadingLeft();
+    if (_errorLabel != null) return _ErrorLeft(message: _errorLabel);
+    return _ReadingLeft(reading: _reading!);
+  }
+}
+
+class _ReadingLeft extends StatelessWidget {
+  const _ReadingLeft({required this.reading});
+  final EnvironmentReading reading;
+
+  @override
+  Widget build(BuildContext context) {
+    final spf = reading.spfRecommendation;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFF472537),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Center(
+                child: SvgPicture.asset(
+                  'assets/images/home/alert_circle.svg',
+                  width: 20,
+                  height: 20,
+                  colorFilter: const ColorFilter.mode(
+                    AppColors.naranja,
+                    BlendMode.srcIn,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Temperature',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
+                  height: 1.4,
+                  color: Color(0xFFCCC3D8),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(left: 44),
+          child: Text(
+            reading.locationLabel,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w500,
+              fontSize: 9,
+              height: 1.5,
+              letterSpacing: -0.08,
+              color: AppColors.stroke,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '${reading.temperatureCelsius.round()}°',
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w700,
+                fontSize: 28,
+                height: 1.2,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Flexible(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Text(
+                  'Celsius',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    height: 1.5,
+                    color: Color(0xFFFFB690),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.naranja.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(
+              color: AppColors.naranja.withValues(alpha: 0.5),
+            ),
+          ),
+          child: Text(
+            spf.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+              height: 1.4,
+              letterSpacing: 0.6,
+              color: AppColors.naranja,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _LoadingLeft extends StatelessWidget {
+  const _LoadingLeft();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 2.4,
+          valueColor: AlwaysStoppedAnimation<Color>(AppColors.naranja),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorLeft extends StatelessWidget {
+  const _ErrorLeft({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Temperature',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontFamily: 'Poppins',
+            fontWeight: FontWeight.w500,
+            fontSize: 14,
+            color: Color(0xFFCCC3D8),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          message,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontFamily: 'Poppins',
+            fontWeight: FontWeight.w400,
+            fontSize: 11,
+            height: 1.4,
+            color: AppColors.hintText,
+          ),
+        ),
+      ],
+    );
+  }
+}
