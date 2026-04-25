@@ -1,0 +1,135 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/skeen_auth_header.dart';
+import '../../../../core/widgets/skeen_button.dart';
+import '../../../../core/widgets/skeen_text_field.dart';
+import '../../../../core/widgets/skeen_star_field.dart';
+import '../../application/validators.dart';
+
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({super.key});
+
+  @override
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+}
+
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
+  final _emailCtrl = TextEditingController();
+  bool _submitted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailCtrl.addListener(_onChanged);
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onChanged() => setState(() {});
+
+  String? get _emailError => Validators.email(_emailCtrl.text);
+  bool get _isValid => _emailError == null;
+
+  void _onSubmit() {
+    setState(() => _submitted = true);
+    if (!_isValid) return;
+    // Redirect to success screen
+    context.go('/forgot-password/success');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            const Positioned(
+              top: 100,
+              left: 0,
+              right: 0,
+              height: 160,
+              child: SkeenStarField(seed: 42, density: 16),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: AutofillGroup(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 24),
+                      const SkeenAuthHeader(),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Forgot password?',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.22,
+                          color: AppColors.violetaClaro,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Enter your email address and we will send you instructions to reset your password.',
+                        style: TextStyle(
+                          fontFamily: 'Poppins',
+                          fontSize: 16,
+                          height: 1.4,
+                          letterSpacing: -0.16,
+                          color: AppColors.hintText,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
+                      SkeenTextField(
+                        label: 'Email',
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.done,
+                        autofillHints: const [AutofillHints.email],
+                        errorText: _submitted ? _emailError : null,
+                      ),
+                      const SizedBox(height: 32),
+                      SkeenButton.primary(
+                        label: 'Send instructions',
+                        onPressed: _onSubmit,
+                      ),
+                      const SizedBox(height: 24),
+                      Center(
+                        child: GestureDetector(
+                          onTap: () => context.go('/login'),
+                          child: const Text(
+                            'Back to login',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 14,
+                              letterSpacing: -0.14,
+                              color: AppColors.violetaLink,
+                              decoration: TextDecoration.underline,
+                              decorationColor: AppColors.violetaLink,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

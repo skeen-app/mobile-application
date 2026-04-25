@@ -21,7 +21,7 @@ class _SkeenConstellationState extends State<SkeenConstellation>
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 12),
-    )..repeat();
+    )..repeat(reverse: true);
   }
 
   @override

@@ -26,6 +26,13 @@ dependencies:
   # SVG rendering
   flutter_svg: ^2.2.4
 
+  # Local key-value storage (auth token persistence)
+  shared_preferences: ^2.3.2
+  camera: ^0.12.0+1
+
+  # HTTP client (Auth and other network services)
+  http: ^1.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

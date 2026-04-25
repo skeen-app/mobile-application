@@ -9,16 +9,19 @@ class SkeenButton extends StatelessWidget {
     super.key,
     required this.label,
     required this.onPressed,
+    this.isLoading = false,
   })  : _variant = _SkeenButtonVariant.primary;
 
   const SkeenButton.secondary({
     super.key,
     required this.label,
     required this.onPressed,
+    this.isLoading = false,
   })  : _variant = _SkeenButtonVariant.secondary;
 
   final String label;
   final VoidCallback onPressed;
+  final bool isLoading;
   final _SkeenButtonVariant _variant;
 
   static const double _height = 52;
@@ -69,23 +72,32 @@ class SkeenButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(_radius),
               child: InkWell(
                 borderRadius: BorderRadius.circular(_radius),
-                onTap: onPressed,
+                onTap: isLoading ? null : onPressed,
                 child: Container(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(_radius),
                     border: border,
                   ),
                   alignment: Alignment.center,
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontFamily: 'Poppins',
-                      fontWeight: FontWeight.w500,
-                      fontSize: 16,
-                      letterSpacing: -0.16,
-                      color: labelColor,
-                    ),
-                  ),
+                  child: isLoading
+                      ? SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            valueColor: AlwaysStoppedAnimation<Color>(labelColor),
+                          ),
+                        )
+                      : Text(
+                          label,
+                          style: TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w500,
+                            fontSize: 16,
+                            letterSpacing: -0.16,
+                            color: labelColor,
+                          ),
+                        ),
                 ),
               ),
             ),
