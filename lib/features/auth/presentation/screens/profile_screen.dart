@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
@@ -121,20 +124,55 @@ class ProfileScreen extends ConsumerWidget {
       hasExistingPhoto: hasPhoto,
     );
     if (action == null || !context.mounted) return;
-    // Image-picker integration lands with the camera/gallery feature work.
-    // For now confirm the chosen action so the popup is visibly wired.
-    final messenger = ScaffoldMessenger.of(context);
-    final label = switch (action) {
-      AvatarAction.takePhoto => 'Camera capture is coming soon',
-      AvatarAction.uploadPhoto => 'Gallery upload is coming soon',
-      AvatarAction.deletePhoto => 'Profile photo will be removed',
-    };
-    messenger.showSnackBar(
+
+    switch (action) {
+      case AvatarAction.takePhoto:
+        await _pickAndUpload(context, ref, ImageSource.camera);
+      case AvatarAction.uploadPhoto:
+        await _pickAndUpload(context, ref, ImageSource.gallery);
+      case AvatarAction.deletePhoto:
+        // Backend DELETE endpoint not yet available.
+        _showSnackBar(context, 'Photo removal coming soon');
+    }
+  }
+
+  Future<void> _pickAndUpload(
+    BuildContext context,
+    WidgetRef ref,
+    ImageSource source,
+  ) async {
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickImage(
+      source: source,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (picked == null || !context.mounted) return;
+
+    _showSnackBar(context, 'Uploading photo…');
+
+    try {
+      await ref
+          .read(authControllerProvider.notifier)
+          .uploadProfilePhoto(File(picked.path));
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showSnackBar(context, 'Profile photo updated ✓');
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showSnackBar(context, 'Upload failed — please try again');
+    }
+  }
+
+  void _showSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: AppColors.indigo,
         behavior: SnackBarBehavior.floating,
         content: Text(
-          label,
+          message,
           style: const TextStyle(
             fontFamily: 'Poppins',
             color: AppColors.violetaClaro,

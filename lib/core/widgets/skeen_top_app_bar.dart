@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import 'skeen_constellation.dart';
-
 /// Reusable top app bar matching Figma `Header - TopAppBar` (155:1060).
 ///
 /// Layout (left → right):

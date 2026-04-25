@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -132,5 +134,31 @@ class AuthController extends StateNotifier<AuthState> {
     }
     await _storage.clear();
     state = const AuthState.idle();
+  }
+
+  /// Uploads a profile photo via the backend and updates the local user
+  /// record with the returned public URL.
+  ///
+  /// Returns the uploaded photo's public URL on success.
+  /// Throws [AuthFailure] or [NetworkFailure] on error.
+  Future<String> uploadProfilePhoto(File imageFile) async {
+    final token = state.token;
+    if (token == null) {
+      throw const InvalidCredentialsFailure();
+    }
+
+    final url = await _api.uploadProfilePhoto(
+      token: token,
+      imageFile: imageFile,
+    );
+
+    // Update in-memory state and local persistence.
+    final updatedUser = state.user?.copyWith(avatarUrl: url);
+    if (updatedUser != null) {
+      await _storage.saveUser(updatedUser);
+      state = state.copyWith(user: updatedUser);
+    }
+
+    return url;
   }
 }

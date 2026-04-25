@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/network/api_exception.dart';
@@ -76,6 +78,58 @@ class AuthApi {
     } catch (_) {
       return const LogoutResult.localOnly();
     }
+  }
+
+  /// Uploads a profile photo to the backend.
+  ///
+  /// Sends a `multipart/form-data` POST to `/auth/profile-photo` with the
+  /// image file. The backend validates type (jpeg/png/webp), extension,
+  /// size ≤ 5 MB, and magic bytes, then persists the photo to Cloud Storage
+  /// and updates the user's `avatarUrl` in Firestore.
+  ///
+  /// Returns the public URL of the uploaded image.
+  Future<String> uploadProfilePhoto({
+    required AuthToken token,
+    required File imageFile,
+  }) async {
+    final uri = ApiConfig.uri('/auth/profile-photo');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer ${token.value}'
+      ..headers['Accept'] = 'application/json';
+
+    final ext = imageFile.path.split('.').last.toLowerCase();
+    final mimeType = switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'application/octet-stream',
+    };
+    final parts = mimeType.split('/');
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        'file',
+        imageFile.path,
+        contentType: MediaType(parts[0], parts[1]),
+      ),
+    );
+
+    final http.StreamedResponse streamed;
+    try {
+      streamed = await request.send().timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (_) {
+      throw const NetworkFailure();
+    }
+
+    final res = await http.Response.fromStream(streamed);
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = _decodeJson(res);
+      return json['url'] as String;
+    }
+    throw _mapError(res, path: '/auth/profile-photo');
   }
 
   AuthApiResponse _parseSession(http.Response res) {
