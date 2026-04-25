@@ -11,19 +11,19 @@ import 'uv_index_dial.dart';
 /// shimmer, and error fallback (e.g. denied location permission).
 class TemperatureCard extends StatelessWidget {
   const TemperatureCard.loaded({super.key, required EnvironmentReading reading})
-      : _reading = reading,
-        _isLoading = false,
-        _errorLabel = null;
+    : _reading = reading,
+      _isLoading = false,
+      _errorLabel = null;
 
   const TemperatureCard.loading({super.key})
-      : _reading = null,
-        _isLoading = true,
-        _errorLabel = null;
+    : _reading = null,
+      _isLoading = true,
+      _errorLabel = null;
 
   const TemperatureCard.error({super.key, required String message})
-      : _reading = null,
-        _isLoading = false,
-        _errorLabel = message;
+    : _reading = null,
+      _isLoading = false,
+      _errorLabel = message;
 
   final EnvironmentReading? _reading;
   final bool _isLoading;
@@ -102,7 +102,7 @@ class _ReadingLeft extends StatelessWidget {
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w500,
                   fontSize: 14,
-                  height: 1.4,
+                  height: 1.2,
                   color: Color(0xFFCCC3D8),
                 ),
               ),
@@ -166,9 +166,7 @@ class _ReadingLeft extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.naranja.withValues(alpha: 0.10),
             borderRadius: BorderRadius.circular(32),
-            border: Border.all(
-              color: AppColors.naranja.withValues(alpha: 0.5),
-            ),
+            border: Border.all(color: AppColors.naranja.withValues(alpha: 0.5)),
           ),
           child: Text(
             spf.label,
