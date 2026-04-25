@@ -4,8 +4,12 @@ import 'package:go_router/go_router.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/medical_history_screen.dart';
+import '../../features/auth/presentation/screens/notifications_settings_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/auth/presentation/screens/permissions_screen.dart';
+import '../../features/auth/presentation/screens/personal_information_screen.dart';
+import '../../features/auth/presentation/screens/privacy_security_screen.dart';
 import '../../features/auth/presentation/screens/profile_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
@@ -121,6 +125,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile',
         name: 'profile',
         builder: (context, state) => const ProfileScreen(),
+        routes: [
+          GoRoute(
+            path: 'personal-information',
+            name: 'personal-info',
+            builder: (context, state) => const PersonalInformationScreen(),
+          ),
+          GoRoute(
+            path: 'medical-history',
+            name: 'medical-history',
+            builder: (context, state) => const MedicalHistoryScreen(),
+          ),
+          GoRoute(
+            path: 'privacy-security',
+            name: 'privacy-security',
+            builder: (context, state) => const PrivacySecurityScreen(),
+          ),
+          GoRoute(
+            path: 'notifications',
+            name: 'notifications',
+            builder: (context, state) => const NotificationsSettingsScreen(),
+          ),
+        ],
       ),
     ],
   );

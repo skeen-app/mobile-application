@@ -18,7 +18,7 @@ class ScanAMoleScreen extends StatelessWidget {
           'The AR-guided camera scan flow lives here. Calibration, capture, '
           'and on-device inference will be wired in next.',
       activeTab: SkeenNavTab.scan,
-      showBackButton: true,
+      showBack: true,
     );
   }
 }

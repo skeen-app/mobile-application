@@ -14,7 +14,7 @@ class ReminderScreen extends StatelessWidget {
           'Schedule periodic check-ins for at-risk lesions and recurring '
           'self-exam routines.',
       activeTab: SkeenNavTab.home,
-      showBackButton: true,
+      showBack: true,
     );
   }
 }

@@ -117,7 +117,13 @@ class AuthController extends StateNotifier<AuthState> {
     }
   }
 
+  /// Local-first logout: invokes the (placeholder) backend revoke, then
+  /// always clears persisted credentials so the device returns to anon state.
   Future<void> signOut() async {
+    final token = state.token;
+    if (token != null) {
+      await _api.logout(token: token);
+    }
     await _storage.clear();
     state = const AuthState.idle();
   }

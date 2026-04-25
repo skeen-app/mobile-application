@@ -37,6 +37,27 @@ class AuthApi {
     return _parseSession(res);
   }
 
+  /// Best-effort sign-out. The endpoint is not yet implemented on the
+  /// backend; the client therefore swallows network/server errors so the
+  /// caller can always proceed to clear local state. The token is sent in
+  /// the `Authorization` header so the backend can revoke it once supported.
+  Future<void> logout({required AuthToken token}) async {
+    try {
+      await _client
+          .post(
+            ApiConfig.uri('/auth/logout'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } catch (_) {
+      // Logout is local-first: a failed remote revoke must not block the
+      // user from leaving the session on this device.
+    }
+  }
+
   AuthApiResponse _parseSession(http.Response res) {
     final json = _decodeJson(res);
     final tokenJson = json['token'];
