@@ -10,6 +10,7 @@ class PersonalInformationScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Personal Information',
+      subtitle: 'edit your details',
       body:
           'Edit your name, date of birth, contact details, and emergency '
           'contact information.',

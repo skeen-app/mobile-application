@@ -10,6 +10,7 @@ class PrivacySecurityScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Privacy & Security',
+      subtitle: 'manage your data',
       body:
           'Biometric login, change password, manage data sharing with '
           'consulting dermatologists, and export or delete your account.',

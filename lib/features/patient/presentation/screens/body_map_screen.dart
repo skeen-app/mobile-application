@@ -12,6 +12,7 @@ class BodyMapScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Complete body map',
+      subtitle: 'track your moles',
       body:
           'Full-figure view with pannable mole markers and per-lesion history '
           'will live here.',

@@ -48,6 +48,7 @@ class ProfileScreen extends ConsumerWidget {
               children: [
                 SkeenTopAppBar(
                   title: 'Profile',
+                  subtitle: 'your personal info',
                   onBack: () {
                     final router = GoRouter.of(context);
                     if (router.canPop()) {

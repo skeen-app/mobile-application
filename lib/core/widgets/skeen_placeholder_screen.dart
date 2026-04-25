@@ -14,12 +14,14 @@ class SkeenPlaceholderScreen extends StatelessWidget {
   const SkeenPlaceholderScreen({
     super.key,
     required this.title,
+    this.subtitle,
     required this.body,
     required this.activeTab,
     this.showBack = false,
   });
 
   final String title;
+  final String? subtitle;
   final String body;
   final SkeenNavTab activeTab;
   final bool showBack;
@@ -41,7 +43,12 @@ class SkeenPlaceholderScreen extends StatelessWidget {
           SafeArea(
             child: Column(
               children: [
-                if (showBack) SkeenTopAppBar(title: title, showBack: true),
+                if (showBack)
+                  SkeenTopAppBar(
+                    title: title,
+                    subtitle: subtitle,
+                    showBack: true,
+                  ),
                 Expanded(
                   child: Center(
                     child: Padding(

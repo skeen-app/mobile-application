@@ -10,6 +10,7 @@ class MedicalHistoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Medical History',
+      subtitle: 'your health records',
       body:
           'Allergies, prior dermatological conditions, family history of skin '
           'cancer, and current medications.',

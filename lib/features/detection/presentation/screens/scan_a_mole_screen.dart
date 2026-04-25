@@ -14,6 +14,7 @@ class ScanAMoleScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Scan a mole',
+      subtitle: 'AI skin analysis',
       body:
           'The AR-guided camera scan flow lives here. Calibration, capture, '
           'and on-device inference will be wired in next.',

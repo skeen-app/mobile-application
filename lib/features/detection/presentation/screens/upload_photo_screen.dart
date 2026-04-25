@@ -11,6 +11,7 @@ class UploadPhotoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Upload a photo',
+      subtitle: 'from your gallery',
       body:
           'Pick an existing image from the gallery and run the same on-device '
           'analysis used for live scans.',
