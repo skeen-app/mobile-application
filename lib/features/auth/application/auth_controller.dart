@@ -9,6 +9,7 @@ import '../domain/registered_user.dart';
 import '../domain/registration_request.dart';
 import '../infrastructure/auth_api.dart';
 import '../infrastructure/token_storage.dart';
+import '../../../core/logger/app_logger.dart';
 import 'auth_state.dart';
 
 /// Must be overridden in `main.dart` after `SharedPreferences.getInstance()`.
@@ -46,14 +47,18 @@ class AuthController extends StateNotifier<AuthState> {
   final TokenStorage _storage;
 
   void hydrate() {
+    AppLogger.info('Hydrating auth state from storage', tag: 'AuthController');
     final token = _storage.readToken();
     final user = _storage.readUser();
     if (token != null) {
+      AppLogger.info('Hydrated successfully for user: ${user?.email}', tag: 'AuthController');
       state = AuthState(
         status: AuthStatus.authenticated,
         token: token,
         user: user,
       );
+    } else {
+      AppLogger.info('No stored session found', tag: 'AuthController');
     }
   }
 
@@ -75,6 +80,7 @@ class AuthController extends StateNotifier<AuthState> {
       await _storage.saveToken(response.token);
       await _storage.saveUser(user);
 
+      AppLogger.info('Registration successful, state updated', tag: 'AuthController');
       state = AuthState(
         status: AuthStatus.authenticated,
         token: response.token,
@@ -82,9 +88,11 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return true;
     } on AuthFailure catch (failure) {
+      AppLogger.warning('Registration failed (AuthFailure): $failure', tag: 'AuthController');
       state = state.copyWith(status: AuthStatus.failure, failure: failure);
       return false;
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('Registration failed (NetworkFailure)', tag: 'AuthController', error: e, stackTrace: stack);
       state = state.copyWith(
         status: AuthStatus.failure,
         failure: const NetworkFailure(),
@@ -101,6 +109,7 @@ class AuthController extends StateNotifier<AuthState> {
       if (response.user != null) {
         await _storage.saveUser(response.user!);
       }
+      AppLogger.info('Login successful, state updated', tag: 'AuthController');
       state = AuthState(
         status: AuthStatus.authenticated,
         token: response.token,
@@ -108,9 +117,11 @@ class AuthController extends StateNotifier<AuthState> {
       );
       return true;
     } on AuthFailure catch (failure) {
+      AppLogger.warning('Login failed (AuthFailure): $failure', tag: 'AuthController');
       state = state.copyWith(status: AuthStatus.failure, failure: failure);
       return false;
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('Login failed (NetworkFailure)', tag: 'AuthController', error: e, stackTrace: stack);
       state = state.copyWith(
         status: AuthStatus.failure,
         failure: const NetworkFailure(),
@@ -128,12 +139,14 @@ class AuthController extends StateNotifier<AuthState> {
   /// failed network call must not strand the user in a half-signed-out
   /// state on this device.
   Future<void> signOut() async {
+    AppLogger.info('Signing out', tag: 'AuthController');
     final token = state.token;
     if (token != null) {
       await _api.logout(token: token);
     }
     await _storage.clear();
     state = const AuthState.idle();
+    AppLogger.info('Sign out complete', tag: 'AuthController');
   }
 
   /// Uploads a profile photo via the backend and updates the local user
@@ -157,6 +170,7 @@ class AuthController extends StateNotifier<AuthState> {
     if (updatedUser != null) {
       await _storage.saveUser(updatedUser);
       state = state.copyWith(user: updatedUser);
+      AppLogger.info('Profile photo URL updated in state', tag: 'AuthController');
     }
 
     return url;

@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/logger/app_logger.dart';
 import '../domain/auth_failure.dart';
 import '../domain/auth_token.dart';
 import '../domain/login_request.dart';
@@ -31,12 +32,16 @@ class AuthApi {
   final http.Client _client;
 
   Future<AuthApiResponse> register(RegistrationRequest request) async {
+    AppLogger.info('Attempting registration for: ${request.email}', tag: 'AuthApi');
     final res = await _send('/auth/register', request.toJson());
+    AppLogger.info('Registration successful for: ${request.email}', tag: 'AuthApi');
     return _parseSession(res);
   }
 
   Future<AuthApiResponse> login(LoginRequest request) async {
+    AppLogger.info('Attempting login for: ${request.email}', tag: 'AuthApi');
     final res = await _send('/auth/login', request.toJson());
+    AppLogger.info('Login successful for: ${request.email}', tag: 'AuthApi');
     return _parseSession(res);
   }
 
@@ -51,6 +56,7 @@ class AuthApi {
   ///    successful local logout; the device session must still be cleared.
   ///  - Any other failure → returns `LogoutResult.localOnly()`.
   Future<LogoutResult> logout({required AuthToken token}) async {
+    AppLogger.info('Attempting logout', tag: 'AuthApi');
     final http.Response res;
     try {
       res = await _client
@@ -62,20 +68,26 @@ class AuthApi {
             },
           )
           .timeout(ApiConfig.defaultTimeout);
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warning('Network error during logout, forcing local logout: $e', tag: 'AuthApi');
       return const LogoutResult.localOnly();
     }
 
     if (res.statusCode == 401) {
       // Token already invalid server-side — local revoke still proceeds.
+      AppLogger.info('Logout: Token already invalid server-side (401)', tag: 'AuthApi');
       return const LogoutResult.localOnly();
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      AppLogger.warning('Logout: Server returned status ${res.statusCode}', tag: 'AuthApi');
       return const LogoutResult.localOnly();
     }
     try {
-      return LogoutResult.fromJson(_decodeJson(res));
-    } catch (_) {
+      final result = LogoutResult.fromJson(_decodeJson(res));
+      AppLogger.info('Logout successful server-side', tag: 'AuthApi');
+      return result;
+    } catch (e) {
+      AppLogger.warning('Failed to parse logout response: $e', tag: 'AuthApi');
       return const LogoutResult.localOnly();
     }
   }
@@ -92,6 +104,7 @@ class AuthApi {
     required AuthToken token,
     required File imageFile,
   }) async {
+    AppLogger.info('Attempting profile photo upload: ${imageFile.path}', tag: 'AuthApi');
     final uri = ApiConfig.uri('/auth/profile-photo');
     final request = http.MultipartRequest('POST', uri)
       ..headers['Authorization'] = 'Bearer ${token.value}'
@@ -118,8 +131,10 @@ class AuthApi {
     try {
       streamed = await request.send().timeout(ApiConfig.defaultTimeout);
     } on TimeoutException {
+      AppLogger.warning('Profile photo upload timed out', tag: 'AuthApi');
       throw const NetworkFailure('The request timed out');
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('Network exception during profile photo upload', tag: 'AuthApi', error: e, stackTrace: stack);
       throw const NetworkFailure();
     }
 
@@ -127,8 +142,10 @@ class AuthApi {
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       final json = _decodeJson(res);
+      AppLogger.info('Profile photo uploaded successfully', tag: 'AuthApi');
       return json['url'] as String;
     }
+    AppLogger.error('Profile photo upload failed: HTTP ${res.statusCode}', tag: 'AuthApi');
     throw _mapError(res, path: '/auth/profile-photo');
   }
 
@@ -147,6 +164,7 @@ class AuthApi {
   }
 
   Future<http.Response> _send(String path, Map<String, dynamic> body) async {
+    AppLogger.info('POST $path', tag: 'AuthApi');
     final http.Response res;
     try {
       res = await _client
@@ -157,14 +175,17 @@ class AuthApi {
           )
           .timeout(ApiConfig.defaultTimeout);
     } on TimeoutException {
+      AppLogger.warning('Request to $path timed out', tag: 'AuthApi');
       throw const NetworkFailure('The request timed out');
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('Network exception during POST $path', tag: 'AuthApi', error: e, stackTrace: stack);
       throw const NetworkFailure();
     }
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res;
     }
+    AppLogger.warning('Request to $path failed with status ${res.statusCode}', tag: 'AuthApi');
     throw _mapError(res, path: path);
   }
 
