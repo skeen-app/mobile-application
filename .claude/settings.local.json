@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(flutter test *)"
+      "Bash(flutter test *)",
+      "mcp__claude_ai_Figma__get_design_context"
     ]
   }
 }

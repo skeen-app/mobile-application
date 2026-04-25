@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_button.dart';
@@ -81,13 +82,7 @@ class TermsScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   SkeenButton.primary(
                     label: 'Accept and continue',
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Terms accepted (home not yet wired).'),
-                        ),
-                      );
-                    },
+                    onPressed: () => context.go('/home'),
                   ),
                   const SizedBox(height: 24),
                 ],
