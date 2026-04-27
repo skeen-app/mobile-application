@@ -149,6 +149,60 @@ class AuthController extends StateNotifier<AuthState> {
     AppLogger.info('Sign out complete', tag: 'AuthController');
   }
 
+  /// Patches mutable profile fields on the backend and mirrors the result
+  /// into in-memory state + persistent storage. Pass only the fields you
+  /// want to change.
+  ///
+  /// Throws [AuthFailure] on validation/server error.
+  Future<RegisteredUser> updateProfile({
+    String? name,
+    String? lastName,
+    String? phone,
+  }) async {
+    final token = state.token;
+    if (token == null) throw const InvalidCredentialsFailure();
+
+    final updated = await _api.updateProfile(
+      token: token,
+      name: name,
+      lastName: lastName,
+      phone: phone,
+    );
+
+    // Backend is the source of truth — but it doesn't echo client-only
+    // fields (e.g. lastScanAt), so merge instead of replacing wholesale.
+    final merged = (state.user ?? updated).copyWith(
+      name: updated.name,
+      lastName: updated.lastName,
+      phone: updated.phone,
+      avatarUrl: updated.avatarUrl,
+      isActive: updated.isActive,
+    );
+
+    await _storage.saveUser(merged);
+    state = state.copyWith(user: merged);
+    AppLogger.info('Profile fields updated and persisted', tag: 'AuthController');
+    return merged;
+  }
+
+  /// Initiates account deletion: backend soft-deletes the Firestore record
+  /// and hard-deletes the Firebase Auth identity. Locally we always wipe
+  /// the session so the router immediately bounces back to onboarding —
+  /// even when the network call fails, the device session must end (the
+  /// backend has already accepted the intent in the worst case).
+  Future<void> deleteAccount() async {
+    final token = state.token;
+    if (token == null) throw const InvalidCredentialsFailure();
+    AppLogger.info('Deleting account', tag: 'AuthController');
+    try {
+      await _api.deleteAccount(token: token);
+    } finally {
+      await _storage.clear();
+      state = const AuthState.idle();
+      AppLogger.info('Local session cleared after deletion', tag: 'AuthController');
+    }
+  }
+
   /// Uploads a profile photo via the backend and updates the local user
   /// record with the returned public URL.
   ///

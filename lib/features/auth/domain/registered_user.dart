@@ -15,6 +15,7 @@ class RegisteredUser {
     required this.phone,
     this.avatarUrl,
     this.lastScanAt,
+    this.isActive = true,
   });
 
   final String id;
@@ -23,6 +24,11 @@ class RegisteredUser {
   final String dni;
   final String email;
   final String phone;
+
+  /// Soft-delete flag mirrored from Firestore. Authenticated sessions are
+  /// always `true`; the field is kept for parity with the backend payload
+  /// and so the UI can react if it ever flips during a session.
+  final bool isActive;
 
   /// Remote URL of the user's profile picture, or `null` when unset.
   final String? avatarUrl;
@@ -42,6 +48,7 @@ class RegisteredUser {
     String? phone,
     String? avatarUrl,
     DateTime? lastScanAt,
+    bool? isActive,
     bool clearAvatar = false,
     bool clearLastScan = false,
   }) {
@@ -54,6 +61,7 @@ class RegisteredUser {
       phone: phone ?? this.phone,
       avatarUrl: clearAvatar ? null : (avatarUrl ?? this.avatarUrl),
       lastScanAt: clearLastScan ? null : (lastScanAt ?? this.lastScanAt),
+      isActive: isActive ?? this.isActive,
     );
   }
 
@@ -66,6 +74,7 @@ class RegisteredUser {
         'phone': phone,
         if (avatarUrl != null) 'avatarUrl': avatarUrl,
         if (lastScanAt != null) 'lastScanAt': lastScanAt!.toIso8601String(),
+        'isActive': isActive,
       };
 
   factory RegisteredUser.fromJson(Map<String, dynamic> json) => RegisteredUser(
@@ -79,5 +88,6 @@ class RegisteredUser {
         lastScanAt: (json['lastScanAt'] as String?) != null
             ? DateTime.tryParse(json['lastScanAt'] as String)
             : null,
+        isActive: json['isActive'] as bool? ?? true,
       );
 }
