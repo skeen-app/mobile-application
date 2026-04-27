@@ -7,7 +7,6 @@ import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
-import '../../features/auth/presentation/screens/medical_history_screen.dart';
 import '../../features/auth/presentation/screens/notifications_settings_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/auth/presentation/screens/permissions_screen.dart';
@@ -171,11 +170,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'personal-information',
             name: 'personal-info',
             builder: (context, state) => const PersonalInformationScreen(),
-          ),
-          GoRoute(
-            path: 'medical-history',
-            name: 'medical-history',
-            builder: (context, state) => const MedicalHistoryScreen(),
           ),
           GoRoute(
             path: 'privacy-security',
