@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../domain/body_region.dart';
 import '../domain/lesion_summary.dart';
 import '../infrastructure/repositories/lesion_summary_repository.dart';
+import '../../../core/logger/app_logger.dart';
 
 final lesionSummaryRepositoryProvider = Provider<LesionSummaryRepository>((ref) {
   return LesionSummaryRepository();
@@ -11,7 +12,15 @@ final lesionSummaryRepositoryProvider = Provider<LesionSummaryRepository>((ref) 
 /// All registered lesions for the current patient — drives both the body-map
 /// dots and the per-region counts on the home dashboard.
 final lesionSummariesProvider = FutureProvider<List<LesionSummary>>((ref) async {
-  return ref.read(lesionSummaryRepositoryProvider).findAll();
+  AppLogger.info('Loading lesion summaries from repository', tag: 'LesionSummaryProvider');
+  try {
+    final summaries = await ref.read(lesionSummaryRepositoryProvider).findAll();
+    AppLogger.info('Loaded ${summaries.length} lesion summaries', tag: 'LesionSummaryProvider');
+    return summaries;
+  } catch (e, stack) {
+    AppLogger.error('Failed to load lesion summaries', tag: 'LesionSummaryProvider', error: e, stackTrace: stack);
+    rethrow;
+  }
 });
 
 /// Per-aggregate counts (Head / Chest / Legs) for the home body map bars.

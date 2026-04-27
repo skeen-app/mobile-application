@@ -10,11 +10,12 @@ class ReminderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return const SkeenPlaceholderScreen(
       title: 'Reminders',
+      subtitle: 'your skin routine',
       body:
           'Schedule periodic check-ins for at-risk lesions and recurring '
           'self-exam routines.',
       activeTab: SkeenNavTab.home,
-      showBackButton: true,
+      showBack: true,
     );
   }
 }

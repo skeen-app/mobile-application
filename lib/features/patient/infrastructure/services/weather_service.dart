@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../../core/logger/app_logger.dart';
 import '../../domain/environment_reading.dart';
 import 'location_service.dart';
 
@@ -26,6 +27,7 @@ class WeatherService {
   );
 
   Future<EnvironmentReading> fetch(DeviceLocation location) async {
+    AppLogger.info('Fetching weather data for coordinates: ${location.latitude}, ${location.longitude}', tag: 'WeatherService');
     final results = await Future.wait([
       _fetchForecast(location),
       _fetchLocationLabel(location),
@@ -53,10 +55,12 @@ class WeatherService {
           const Duration(seconds: 8),
         );
     if (response.statusCode != 200) {
+      AppLogger.warning('Forecast API failed: HTTP ${response.statusCode}', tag: 'WeatherService');
       throw WeatherUnavailableException(
         'Forecast HTTP ${response.statusCode}',
       );
     }
+    AppLogger.info('Forecast API successful', tag: 'WeatherService');
     final json = jsonDecode(response.body) as Map<String, dynamic>;
 
     final current = json['current'] as Map<String, dynamic>?;
@@ -131,7 +135,8 @@ class WeatherService {
       if (cityName != null) return cityName;
       if (country != null && country.isNotEmpty) return country;
       return null;
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warning('BigDataCloud reverse geocode failed: $e', tag: 'WeatherService');
       return null;
     }
   }
@@ -157,7 +162,8 @@ class WeatherService {
         return '$name, $country';
       }
       return name;
-    } catch (_) {
+    } catch (e) {
+      AppLogger.warning('OpenMeteo reverse geocode failed: $e', tag: 'WeatherService');
       return null;
     }
   }

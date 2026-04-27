@@ -1,13 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 import '../../../core/network/api_config.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/logger/app_logger.dart';
 import '../domain/auth_failure.dart';
 import '../domain/auth_token.dart';
 import '../domain/login_request.dart';
+import '../domain/logout_result.dart';
 import '../domain/registered_user.dart';
 import '../domain/registration_request.dart';
 
@@ -28,13 +32,122 @@ class AuthApi {
   final http.Client _client;
 
   Future<AuthApiResponse> register(RegistrationRequest request) async {
+    AppLogger.info('Attempting registration for: ${request.email}', tag: 'AuthApi');
     final res = await _send('/auth/register', request.toJson());
+    AppLogger.info('Registration successful for: ${request.email}', tag: 'AuthApi');
     return _parseSession(res);
   }
 
   Future<AuthApiResponse> login(LoginRequest request) async {
+    AppLogger.info('Attempting login for: ${request.email}', tag: 'AuthApi');
     final res = await _send('/auth/login', request.toJson());
+    AppLogger.info('Login successful for: ${request.email}', tag: 'AuthApi');
     return _parseSession(res);
+  }
+
+  /// Revokes the Firebase refresh tokens server-side. The backend validates
+  /// the bearer (`check_revoked=True`) and on success returns a
+  /// [LogoutResult] with the revocation timestamp.
+  ///
+  /// Local-first contract: the caller (`AuthController.signOut`) always
+  /// clears local credentials regardless of the network outcome. So:
+  ///  - HTTP 200 → typed result returned.
+  ///  - HTTP 401 (token already revoked / expired / invalid) → treated as a
+  ///    successful local logout; the device session must still be cleared.
+  ///  - Any other failure → returns `LogoutResult.localOnly()`.
+  Future<LogoutResult> logout({required AuthToken token}) async {
+    AppLogger.info('Attempting logout', tag: 'AuthApi');
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            ApiConfig.uri('/auth/logout'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } catch (e) {
+      AppLogger.warning('Network error during logout, forcing local logout: $e', tag: 'AuthApi');
+      return const LogoutResult.localOnly();
+    }
+
+    if (res.statusCode == 401) {
+      // Token already invalid server-side — local revoke still proceeds.
+      AppLogger.info('Logout: Token already invalid server-side (401)', tag: 'AuthApi');
+      return const LogoutResult.localOnly();
+    }
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      AppLogger.warning('Logout: Server returned status ${res.statusCode}', tag: 'AuthApi');
+      return const LogoutResult.localOnly();
+    }
+    try {
+      final result = LogoutResult.fromJson(_decodeJson(res));
+      AppLogger.info('Logout successful server-side', tag: 'AuthApi');
+      return result;
+    } catch (e) {
+      AppLogger.warning('Failed to parse logout response: $e', tag: 'AuthApi');
+      return const LogoutResult.localOnly();
+    }
+  }
+
+  /// Uploads a profile photo to the backend.
+  ///
+  /// Sends a `multipart/form-data` POST to `/auth/profile-photo` with the
+  /// image bytes. Works on every Flutter target (mobile, desktop, web) by
+  /// reading from memory instead of `dart:io`. The backend validates type
+  /// (jpeg/png/webp), extension, size ≤ 5 MB, and magic bytes, then persists
+  /// the photo to Cloud Storage and updates the user's `avatarUrl` in
+  /// Firestore.
+  ///
+  /// Returns the public URL of the uploaded image.
+  Future<String> uploadProfilePhoto({
+    required AuthToken token,
+    required Uint8List bytes,
+    required String filename,
+    required String mimeType,
+  }) async {
+    AppLogger.info('Attempting profile photo upload: $filename (${bytes.lengthInBytes} bytes)', tag: 'AuthApi');
+    final uri = ApiConfig.uri('/auth/profile-photo');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['Authorization'] = 'Bearer ${token.value}'
+      ..headers['Accept'] = 'application/json';
+
+    final parts = mimeType.split('/');
+    final mediaType = parts.length == 2
+        ? MediaType(parts[0], parts[1])
+        : MediaType('application', 'octet-stream');
+
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: mediaType,
+      ),
+    );
+
+    final http.StreamedResponse streamed;
+    try {
+      streamed = await request.send().timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      AppLogger.warning('Profile photo upload timed out', tag: 'AuthApi');
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network exception during profile photo upload', tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    final res = await http.Response.fromStream(streamed);
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = _decodeJson(res);
+      AppLogger.info('Profile photo uploaded successfully', tag: 'AuthApi');
+      return json['url'] as String;
+    }
+    AppLogger.error('Profile photo upload failed: HTTP ${res.statusCode}', tag: 'AuthApi');
+    throw _mapError(res, path: '/auth/profile-photo');
   }
 
   AuthApiResponse _parseSession(http.Response res) {
@@ -52,6 +165,7 @@ class AuthApi {
   }
 
   Future<http.Response> _send(String path, Map<String, dynamic> body) async {
+    AppLogger.info('POST $path', tag: 'AuthApi');
     final http.Response res;
     try {
       res = await _client
@@ -62,14 +176,17 @@ class AuthApi {
           )
           .timeout(ApiConfig.defaultTimeout);
     } on TimeoutException {
+      AppLogger.warning('Request to $path timed out', tag: 'AuthApi');
       throw const NetworkFailure('The request timed out');
-    } catch (_) {
+    } catch (e, stack) {
+      AppLogger.error('Network exception during POST $path', tag: 'AuthApi', error: e, stackTrace: stack);
       throw const NetworkFailure();
     }
 
     if (res.statusCode >= 200 && res.statusCode < 300) {
       return res;
     }
+    AppLogger.warning('Request to $path failed with status ${res.statusCode}', tag: 'AuthApi');
     throw _mapError(res, path: path);
   }
 

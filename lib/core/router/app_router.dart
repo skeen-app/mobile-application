@@ -1,11 +1,17 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/application/auth_controller.dart';
+import '../../features/auth/application/auth_state.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
+import '../../features/auth/presentation/screens/notifications_settings_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/auth/presentation/screens/permissions_screen.dart';
+import '../../features/auth/presentation/screens/personal_information_screen.dart';
+import '../../features/auth/presentation/screens/privacy_security_screen.dart';
 import '../../features/auth/presentation/screens/profile_screen.dart';
 import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
@@ -19,9 +25,47 @@ import '../../features/patient/presentation/screens/history_screen.dart';
 import '../../features/patient/presentation/screens/home_screen.dart';
 import '../../features/patient/presentation/screens/reminder_screen.dart';
 
+/// Locations the router considers part of the unauthenticated funnel.
+/// Anything else requires `authStateProvider.isAuthenticated == true` to be
+/// reachable; the redirect kicks the user back to `/` otherwise.
+const _unauthenticatedRoutes = <String>{
+  '/',
+  '/login',
+  '/register',
+  '/register/success',
+  '/forgot-password',
+  '/forgot-password/success',
+  '/onboarding/permissions',
+  '/onboarding/terms',
+};
+
+bool _isUnauthenticatedLocation(String location) {
+  for (final route in _unauthenticatedRoutes) {
+    if (location == route || location.startsWith('$route/')) return true;
+  }
+  return false;
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final authListenable = _AuthRouterListenable(ref);
+  ref.onDispose(authListenable.dispose);
+
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: authListenable,
+    redirect: (context, state) {
+      final isAuthenticated =
+          ref.read(authControllerProvider).isAuthenticated;
+      final goingToUnauthRoute =
+          _isUnauthenticatedLocation(state.matchedLocation);
+
+      // Protected route + signed-out → bounce to onboarding. After a
+      // backend-confirmed logout this guarantees the back stack cannot
+      // resurface authenticated screens (Profile, Home, …).
+      if (!isAuthenticated && !goingToUnauthRoute) return '/';
+
+      return null;
+    },
     routes: [
       GoRoute(
         path: '/',
@@ -121,7 +165,48 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile',
         name: 'profile',
         builder: (context, state) => const ProfileScreen(),
+        routes: [
+          GoRoute(
+            path: 'personal-information',
+            name: 'personal-info',
+            builder: (context, state) => const PersonalInformationScreen(),
+          ),
+          GoRoute(
+            path: 'privacy-security',
+            name: 'privacy-security',
+            builder: (context, state) => const PrivacySecurityScreen(),
+          ),
+          GoRoute(
+            path: 'notifications',
+            name: 'notifications',
+            builder: (context, state) => const NotificationsSettingsScreen(),
+          ),
+        ],
       ),
     ],
   );
 });
+
+/// Adapter that lets `GoRouter.refreshListenable` react to auth-state
+/// changes. Re-evaluates `redirect` whenever `AuthStatus` flips so a
+/// successful sign-out instantly bounces the user off protected routes.
+class _AuthRouterListenable extends ChangeNotifier {
+  _AuthRouterListenable(this._ref) {
+    _subscription = _ref.listen<AuthStatus>(
+      authControllerProvider.select((s) => s.status),
+      (previous, next) {
+        if (previous != next) notifyListeners();
+      },
+      fireImmediately: false,
+    );
+  }
+
+  final Ref _ref;
+  late final ProviderSubscription<AuthStatus> _subscription;
+
+  @override
+  void dispose() {
+    _subscription.close();
+    super.dispose();
+  }
+}

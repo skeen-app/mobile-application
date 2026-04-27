@@ -4,23 +4,27 @@ import 'package:go_router/go_router.dart';
 import '../theme/app_colors.dart';
 import 'skeen_bottom_nav.dart';
 import 'skeen_star_field.dart';
+import 'skeen_top_app_bar.dart';
 
 /// Reusable scaffolding for screens that are wired into navigation but whose
 /// real implementation lands in a later iteration. Keeps the bottom nav,
-/// background, and status bar consistent across stub destinations.
+/// background, top app bar, and overall composition consistent across stub
+/// destinations.
 class SkeenPlaceholderScreen extends StatelessWidget {
   const SkeenPlaceholderScreen({
     super.key,
     required this.title,
+    this.subtitle,
     required this.body,
     required this.activeTab,
-    this.showBackButton = false,
+    this.showBack = false,
   });
 
   final String title;
+  final String? subtitle;
   final String body;
   final SkeenNavTab activeTab;
-  final bool showBackButton;
+  final bool showBack;
 
   @override
   Widget build(BuildContext context) {
@@ -39,28 +43,11 @@ class SkeenPlaceholderScreen extends StatelessWidget {
           SafeArea(
             child: Column(
               children: [
-                if (showBackButton)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    child: Row(
-                      children: [
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(20),
-                            onTap: () => context.pop(),
-                            child: const Padding(
-                              padding: EdgeInsets.all(8),
-                              child: Icon(
-                                Icons.arrow_back,
-                                color: AppColors.violetaClaro,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                if (showBack)
+                  SkeenTopAppBar(
+                    title: title,
+                    subtitle: subtitle,
+                    showBack: true,
                   ),
                 Expanded(
                   child: Center(
@@ -69,18 +56,19 @@ class SkeenPlaceholderScreen extends StatelessWidget {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w600,
-                              fontSize: 22,
-                              letterSpacing: -0.22,
-                              color: AppColors.violetaClaro,
+                          if (!showBack)
+                            Text(
+                              title,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontFamily: 'Poppins',
+                                fontWeight: FontWeight.w600,
+                                fontSize: 22,
+                                letterSpacing: -0.22,
+                                color: AppColors.violetaClaro,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 14),
+                          if (!showBack) const SizedBox(height: 14),
                           Text(
                             body,
                             textAlign: TextAlign.center,

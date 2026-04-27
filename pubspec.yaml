@@ -33,6 +33,12 @@ dependencies:
   # HTTP client (Auth and other network services)
   http: ^1.2.2
 
+  # Image picker (camera + gallery)
+  image_picker: ^1.1.2
+
+  # Multipart upload helpers
+  http_parser: ^4.0.2
+
   # Geolocation (Patient context: temperature/UV by current location)
   geolocator: ^13.0.2
 
@@ -55,6 +61,7 @@ flutter:
     - assets/images/
     - assets/images/home/
     - assets/images/nav/
+    - assets/images/profile/
 
   fonts:
     - family: Poppins
