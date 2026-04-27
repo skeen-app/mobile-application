@@ -92,6 +92,77 @@ class AuthApi {
     }
   }
 
+  /// Patches mutable profile fields (`name`, `lastName`, `phone`) for the
+  /// authenticated user. Pass only the fields you want to change — the
+  /// backend leaves omitted ones untouched.
+  ///
+  /// Returns the freshly merged [RegisteredUser] from the server.
+  Future<RegisteredUser> updateProfile({
+    required AuthToken token,
+    String? name,
+    String? lastName,
+    String? phone,
+  }) async {
+    final body = <String, dynamic>{
+      'name': ?name,
+      'lastName': ?lastName,
+      'phone': ?phone,
+    };
+
+    AppLogger.info('PATCH /auth/me (${body.keys.toList()})', tag: 'AuthApi');
+    final http.Response res;
+    try {
+      res = await _client
+          .patch(
+            ApiConfig.uri('/auth/me'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network error during profile update', tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = _decodeJson(res);
+      return RegisteredUser.fromJson(json);
+    }
+    throw _mapError(res, path: '/auth/me');
+  }
+
+  /// Soft-deletes the user record (Firestore `isActive=false`) and removes
+  /// the Firebase Auth identity. The local session is the caller's
+  /// responsibility — see [AuthController.deleteAccount].
+  Future<void> deleteAccount({required AuthToken token}) async {
+    AppLogger.info('DELETE /auth/me', tag: 'AuthApi');
+    final http.Response res;
+    try {
+      res = await _client
+          .delete(
+            ApiConfig.uri('/auth/me'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network error during account deletion', tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) return;
+    throw _mapError(res, path: '/auth/me');
+  }
+
   /// Uploads a profile photo to the backend.
   ///
   /// Sends a `multipart/form-data` POST to `/auth/profile-photo` with the
