@@ -7,17 +7,26 @@ import '../../../../core/theme/app_colors.dart';
 ///
 /// Shows the remote photo when [photoUrl] is non-null and resolves; otherwise
 /// renders the static "user blank" SVG so the layout never collapses.
+///
+/// [refreshToken] is an opaque value bumped by the parent each time a fresh
+/// upload completes. The backend overwrites `profiles/{uid}.{ext}` so the
+/// public URL is byte-identical across uploads; without a per-upload widget
+/// key Flutter's `Image.network` resolves to the cached bytes. The token is
+/// folded into the inner `Image` widget's key — the URL itself stays
+/// untouched on the wire and in storage.
 class ProfileAvatar extends StatelessWidget {
   const ProfileAvatar({
     super.key,
     required this.photoUrl,
     required this.onTap,
     this.size = 96,
+    this.refreshToken = 0,
   });
 
   final String? photoUrl;
   final VoidCallback onTap;
   final double size;
+  final int refreshToken;
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +54,10 @@ class ProfileAvatar extends StatelessWidget {
               child: SizedBox(
                 width: innerSize,
                 height: innerSize,
-                child: _AvatarImage(photoUrl: photoUrl),
+                child: _AvatarImage(
+                  photoUrl: photoUrl,
+                  refreshToken: refreshToken,
+                ),
               ),
             ),
           ),
@@ -56,14 +68,16 @@ class ProfileAvatar extends StatelessWidget {
 }
 
 class _AvatarImage extends StatelessWidget {
-  const _AvatarImage({required this.photoUrl});
+  const _AvatarImage({required this.photoUrl, required this.refreshToken});
   final String? photoUrl;
+  final int refreshToken;
 
   @override
   Widget build(BuildContext context) {
     if (photoUrl != null && photoUrl!.isNotEmpty) {
       return Image.network(
         photoUrl!,
+        key: ValueKey('$photoUrl#$refreshToken'),
         fit: BoxFit.cover,
         errorBuilder: (context, error, stackTrace) => const _BlankAvatar(),
         loadingBuilder: (context, child, progress) {

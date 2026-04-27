@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -152,9 +152,17 @@ class AuthController extends StateNotifier<AuthState> {
   /// Uploads a profile photo via the backend and updates the local user
   /// record with the returned public URL.
   ///
+  /// Accepts raw bytes so the same code path works on mobile (where the
+  /// picker hands us a file path) and on web (where there is no `dart:io`
+  /// File — only an in-memory blob).
+  ///
   /// Returns the uploaded photo's public URL on success.
   /// Throws [AuthFailure] or [NetworkFailure] on error.
-  Future<String> uploadProfilePhoto(File imageFile) async {
+  Future<String> uploadProfilePhoto({
+    required Uint8List bytes,
+    required String filename,
+    required String mimeType,
+  }) async {
     final token = state.token;
     if (token == null) {
       throw const InvalidCredentialsFailure();
@@ -162,10 +170,14 @@ class AuthController extends StateNotifier<AuthState> {
 
     final url = await _api.uploadProfilePhoto(
       token: token,
-      imageFile: imageFile,
+      bytes: bytes,
+      filename: filename,
+      mimeType: mimeType,
     );
 
-    // Update in-memory state and local persistence.
+    // Persist the URL exactly as the backend returns it — same as what is
+    // stored at register/login time, so a cold start with a hydrated user
+    // can render the avatar without any extra network call.
     final updatedUser = state.user?.copyWith(avatarUrl: url);
     if (updatedUser != null) {
       await _storage.saveUser(updatedUser);

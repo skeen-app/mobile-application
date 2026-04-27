@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -21,16 +19,24 @@ import '../widgets/profile_stat_card.dart';
 
 /// Profile dashboard — Auth bounded context.
 ///
-/// Reads identity from `authControllerProvider` (already persisted from
-/// register/login, so no network call is required). The registered-moles
-/// counter and next-checkup date come from `profileSummaryProvider`, which
-/// is wired to a backend endpoint (placeholder) and falls back to local
-/// data while that endpoint ships.
-class ProfileScreen extends ConsumerWidget {
+/// Reads identity from `authControllerProvider` — `avatarUrl`, `lastScanAt`
+/// and the rest of the user record are persisted at register/login time, so
+/// rendering this screen requires no network call. The registered-moles
+/// counter is computed from the local lesion repository.
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  /// Bumped after every successful upload to force `Image.network` to drop
+  /// any cached bytes. The persisted `avatarUrl` itself is never modified.
+  int _avatarRefreshToken = 0;
+
+  @override
+  Widget build(BuildContext context) {
     final user = ref.watch(authControllerProvider.select((s) => s.user));
     final summaryAsync = ref.watch(profileSummaryProvider);
 
@@ -79,6 +85,7 @@ class ProfileScreen extends ConsumerWidget {
                                 children: [
                                   _ProfileHeader(
                                     user: user,
+                                    avatarRefreshToken: _avatarRefreshToken,
                                     onAvatarTap: () =>
                                         _onAvatarTap(context, ref, user),
                                   ),
@@ -141,29 +148,72 @@ class ProfileScreen extends ConsumerWidget {
     WidgetRef ref,
     ImageSource source,
   ) async {
-    final picker = ImagePicker();
-    final XFile? picked = await picker.pickImage(
-      source: source,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
+    final XFile? picked;
+    try {
+      picked = await ImagePicker().pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      _showSnackBar(
+        context,
+        source == ImageSource.camera
+            ? 'Could not open the camera'
+            : 'Could not open the gallery',
+      );
+      return;
+    }
     if (picked == null || !context.mounted) return;
+
+    // Read bytes — works on every platform (web has no dart:io File).
+    final bytes = await picked.readAsBytes();
+    if (!context.mounted) return;
+
+    final filename = picked.name.isNotEmpty ? picked.name : 'avatar.jpg';
+    final mimeType = picked.mimeType ?? _mimeFromName(filename);
 
     _showSnackBar(context, 'Uploading photo…');
 
     try {
-      await ref
+      final newUrl = await ref
           .read(authControllerProvider.notifier)
-          .uploadProfilePhoto(File(picked.path));
+          .uploadProfilePhoto(
+            bytes: bytes,
+            filename: filename,
+            mimeType: mimeType,
+          );
+
+      // The backend overwrites `profiles/{uid}.{ext}`, so the URL is
+      // identical across uploads. Drop the cached bytes for that URL and
+      // bump the refresh token so `Image.network` rebuilds with a fresh
+      // stream — without ever modifying the persisted URL itself.
+      final provider = NetworkImage(newUrl);
+      await provider.evict();
+
+      if (!mounted) return;
+      setState(() => _avatarRefreshToken++);
+
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       _showSnackBar(context, 'Profile photo updated ✓');
-    } catch (e) {
+    } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       _showSnackBar(context, 'Upload failed — please try again');
     }
+  }
+
+  static String _mimeFromName(String name) {
+    final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return switch (ext) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      _ => 'application/octet-stream',
+    };
   }
 
   void _showSnackBar(BuildContext context, String message) {
@@ -205,9 +255,14 @@ class ProfileScreen extends ConsumerWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.user, required this.onAvatarTap});
+  const _ProfileHeader({
+    required this.user,
+    required this.avatarRefreshToken,
+    required this.onAvatarTap,
+  });
 
   final RegisteredUser? user;
+  final int avatarRefreshToken;
   final VoidCallback onAvatarTap;
 
   @override
@@ -224,6 +279,7 @@ class _ProfileHeader extends StatelessWidget {
           ProfileAvatar(
             photoUrl: user?.avatarUrl,
             onTap: onAvatarTap,
+            refreshToken: avatarRefreshToken,
           ),
           const SizedBox(height: 12),
           Text(
@@ -333,7 +389,7 @@ class _SettingsSection extends StatelessWidget {
           ProfileSettingsRow(
             iconAsset: 'assets/images/profile/medical_history.svg',
             label: 'Medical History',
-            onTap: () => context.pushNamed('medical-history'),
+            onTap: () => context.pushNamed('history'),
           ),
           const _Divider(),
           ProfileSettingsRow(

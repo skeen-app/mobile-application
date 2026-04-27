@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -95,35 +95,36 @@ class AuthApi {
   /// Uploads a profile photo to the backend.
   ///
   /// Sends a `multipart/form-data` POST to `/auth/profile-photo` with the
-  /// image file. The backend validates type (jpeg/png/webp), extension,
-  /// size ≤ 5 MB, and magic bytes, then persists the photo to Cloud Storage
-  /// and updates the user's `avatarUrl` in Firestore.
+  /// image bytes. Works on every Flutter target (mobile, desktop, web) by
+  /// reading from memory instead of `dart:io`. The backend validates type
+  /// (jpeg/png/webp), extension, size ≤ 5 MB, and magic bytes, then persists
+  /// the photo to Cloud Storage and updates the user's `avatarUrl` in
+  /// Firestore.
   ///
   /// Returns the public URL of the uploaded image.
   Future<String> uploadProfilePhoto({
     required AuthToken token,
-    required File imageFile,
+    required Uint8List bytes,
+    required String filename,
+    required String mimeType,
   }) async {
-    AppLogger.info('Attempting profile photo upload: ${imageFile.path}', tag: 'AuthApi');
+    AppLogger.info('Attempting profile photo upload: $filename (${bytes.lengthInBytes} bytes)', tag: 'AuthApi');
     final uri = ApiConfig.uri('/auth/profile-photo');
     final request = http.MultipartRequest('POST', uri)
       ..headers['Authorization'] = 'Bearer ${token.value}'
       ..headers['Accept'] = 'application/json';
 
-    final ext = imageFile.path.split('.').last.toLowerCase();
-    final mimeType = switch (ext) {
-      'jpg' || 'jpeg' => 'image/jpeg',
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      _ => 'application/octet-stream',
-    };
     final parts = mimeType.split('/');
+    final mediaType = parts.length == 2
+        ? MediaType(parts[0], parts[1])
+        : MediaType('application', 'octet-stream');
 
     request.files.add(
-      await http.MultipartFile.fromPath(
+      http.MultipartFile.fromBytes(
         'file',
-        imageFile.path,
-        contentType: MediaType(parts[0], parts[1]),
+        bytes,
+        filename: filename,
+        contentType: mediaType,
       ),
     );
 
