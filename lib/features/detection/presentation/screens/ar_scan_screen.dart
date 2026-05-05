@@ -72,7 +72,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
       await _camera.initialize();
       _maxZoom = await _camera.getMaxZoom();
 
-      // Start readiness evaluation
+      // Start readiness evaluation with AR distance stream
       final arSession = ref.read(arSessionProvider);
       _evaluator.start(distanceStream: arSession.distance);
 
@@ -82,7 +82,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
           _readiness = r;
           _quality = r.lighting;
         });
-        // Update the detection controller readiness state
+        // Sync to detection controller state
         ref.read(detectionControllerProvider.notifier).updateReadiness(r);
       });
 
@@ -98,22 +98,28 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     }
   }
 
+  /// Per-frame projection: world anchor → screen pixel.
+  /// Called at 30 fps by the timer. The heavy work (method channel call)
+  /// is async so it doesn't block the render thread.
   Future<void> _refreshAnchorPosition() async {
     final state = ref.read(detectionControllerProvider);
     if (state.anchor == null) {
-      if (_anchorScreenPosition != null) {
+      if (_anchorScreenPosition != null && mounted) {
         setState(() => _anchorScreenPosition = null);
       }
       return;
     }
+    if (_previewSize == Size.zero) return;
+
     final controller = ref.read(detectionControllerProvider.notifier);
-    final pt = await controller.projectAnchorToScreen();
+    final px = await controller.projectAnchorToScreen(
+        previewSize: _previewSize);
     if (!mounted) return;
-    if (pt != null && _previewSize != Size.zero) {
-      final px = Offset(pt.dx * _previewSize.width,
-          pt.dy * _previewSize.height);
+
+    if (px != null) {
       setState(() => _anchorScreenPosition = px);
     } else {
+      // Anchor behind camera or off-screen — fall back to center
       setState(() => _anchorScreenPosition = null);
     }
   }
@@ -139,27 +145,19 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     super.dispose();
   }
 
+  /// Capture pipeline — all flash/zoom/AE logic is handled by the
+  /// DetectionController, which dispatches to both camera plugin and AR
+  /// session internally.
   Future<void> _handleCapture() async {
-    final controller = ref.read(detectionControllerProvider.notifier);
-    final state = ref.read(detectionControllerProvider);
+    final detection = ref.read(detectionControllerProvider);
 
-    if (state.phase == DetectionPhase.presented) {
-      // After result: show body region picker → navigate to triage
-      _navigateToTriage(state);
+    if (detection.phase == DetectionPhase.presented) {
+      _navigateToTriage(detection);
       return;
     }
 
-    // Lock AE/AF before capture for stable exposure
-    await _camera.lockExposure();
-
-    // Capture standardized (center-cropped 1:1) image
-    final bytes = await _camera.captureStandardized();
-
-    // Unlock for next scan
-    await _camera.unlockExposure();
-
-    if (bytes == null) return;
-    await controller.captureWithBytes(bytes: bytes, previewSize: _previewSize);
+    final controller = ref.read(detectionControllerProvider.notifier);
+    await controller.captureAndClassify(previewSize: _previewSize);
   }
 
   Future<void> _navigateToTriage(DetectionState state) async {
@@ -167,10 +165,9 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
       return;
     }
 
-    // Show body region picker
     final region = await BodyRegionPicker.show(context);
-
     if (!mounted) return;
+
     context.pushNamed(
       'triage-result',
       extra: {
@@ -191,16 +188,16 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     final newZoom = (_baseZoom * details.scale).clamp(1.0, _maxZoom);
     if ((newZoom - _currentZoom).abs() > 0.05) {
       setState(() => _currentZoom = newZoom);
-      _camera.setZoom(newZoom);
+      // Dispatch through controller — it handles both camera + AR session
       ref.read(detectionControllerProvider.notifier).setZoom(newZoom);
     }
   }
 
+  /// Flash toggle — dispatches through DetectionController which sends to
+  /// both the camera plugin (physical torch) and AR session (native sync).
   Future<void> _handleFlash() async {
     final state = ref.read(detectionControllerProvider);
-    final next = !state.flashOn;
-    await _camera.setFlash(next);
-    await ref.read(detectionControllerProvider.notifier).setFlash(next);
+    await ref.read(detectionControllerProvider.notifier).setFlash(!state.flashOn);
   }
 
   @override
@@ -270,6 +267,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     position: _anchorScreenPosition ??
                         Offset(_previewSize.width / 2,
                             _previewSize.height * 0.28),
+                    anchorPoint: _anchorScreenPosition,
                     child: FloatingDiagnosisLabel(
                       result: detection.result!,
                       onTap: () => _navigateToTriage(detection),
@@ -384,8 +382,6 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     await ref
                         .read(detectionControllerProvider.notifier)
                         .reset();
-                    // Restart camera streaming
-                    await _camera.unlockExposure();
                   } else {
                     context.pushNamed('calibrate');
                   }
@@ -399,19 +395,75 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
   }
 }
 
+/// Positions the label over the anchor point, with a "stem line" connecting
+/// the popup to the lesion anchor.
 class _AnchoredLabel extends StatelessWidget {
-  const _AnchoredLabel({required this.position, required this.child});
+  const _AnchoredLabel({
+    required this.position,
+    required this.child,
+    this.anchorPoint,
+  });
+
   final Offset position;
   final Widget child;
+  final Offset? anchorPoint;
 
   @override
   Widget build(BuildContext context) {
-    return Positioned(
-      left: (position.dx - 130).clamp(0.0, double.infinity),
-      top: (position.dy - 80).clamp(0.0, double.infinity),
-      child: child,
+    // Position the label above and slightly left of the anchor
+    final labelX = (position.dx - 130).clamp(8.0, double.infinity);
+    final labelY = (position.dy - 100).clamp(8.0, double.infinity);
+
+    return Stack(
+      children: [
+        // Stem line from anchor to label (if we have a real AR anchor)
+        if (anchorPoint != null)
+          Positioned.fill(
+            child: CustomPaint(
+              painter: _StemLinePainter(
+                from: anchorPoint!,
+                to: Offset(labelX + 130, labelY + 80),
+              ),
+            ),
+          ),
+        // The label itself
+        Positioned(
+          left: labelX,
+          top: labelY,
+          child: child,
+        ),
+      ],
     );
   }
+}
+
+/// Paints a thin dashed line from the anchor point to the popup.
+class _StemLinePainter extends CustomPainter {
+  _StemLinePainter({required this.from, required this.to});
+  final Offset from;
+  final Offset to;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.violeta.withValues(alpha: 0.6)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    // Draw a small circle at the anchor point
+    canvas.drawCircle(from, 4, paint..style = PaintingStyle.fill);
+
+    // Draw the stem line
+    paint.style = PaintingStyle.stroke;
+    final path = Path()
+      ..moveTo(from.dx, from.dy)
+      ..lineTo(to.dx, to.dy);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_StemLinePainter old) =>
+      old.from != from || old.to != to;
 }
 
 class _FittedPreview extends StatelessWidget {

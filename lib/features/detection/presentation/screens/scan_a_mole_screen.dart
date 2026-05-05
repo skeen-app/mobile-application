@@ -21,8 +21,8 @@ import '../widgets/readiness_checklist_overlay.dart';
 import '../widgets/scan_capture_button.dart';
 
 /// Fallback scan screen for devices without AR/depth sensor support.
-/// Now integrates full inline inference via DetectionController — same
-/// TFLite pipeline as ArScanScreen, but without AR anchor positioning.
+/// Integrates full inline TFLite inference via DetectionController — same
+/// pipeline as ArScanScreen, but without AR anchor positioning.
 /// The floating diagnosis label centers in the viewport instead.
 class ScanAMoleScreen extends ConsumerStatefulWidget {
   const ScanAMoleScreen({super.key});
@@ -41,6 +41,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
   CaptureReadiness _readiness = CaptureReadiness.initializing;
   bool _showShutterFlash = false;
   String? _initError;
+  Size _previewSize = Size.zero;
 
   // Pinch-to-zoom state
   double _currentZoom = 1.0;
@@ -100,9 +101,10 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     super.dispose();
   }
 
+  /// Capture pipeline — routed entirely through DetectionController which
+  /// handles AE/AF lock, capture, inference, persistence, and stream restart.
   Future<void> _handleCapture() async {
     final detection = ref.read(detectionControllerProvider);
-    final controller = ref.read(detectionControllerProvider.notifier);
 
     if (detection.phase == DetectionPhase.presented) {
       _navigateToTriage(detection);
@@ -114,26 +116,8 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       if (mounted) setState(() => _showShutterFlash = false);
     });
 
-    await _camera.lockExposure();
-    final bytes = await _camera.captureStandardized();
-    await _camera.unlockExposure();
-
-    if (bytes == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Capture failed — please try again')),
-        );
-      }
-      return;
-    }
-
-    // Run inference via the detection controller
-    if (!mounted) return;
-    final viewSize = Size(
-      MediaQuery.of(context).size.width - 40,
-      MediaQuery.of(context).size.height * 0.55,
-    );
-    await controller.captureWithBytes(bytes: bytes, previewSize: viewSize);
+    final controller = ref.read(detectionControllerProvider.notifier);
+    await controller.captureAndClassify(previewSize: _previewSize);
   }
 
   Future<void> _navigateToTriage(DetectionState state) async {
@@ -160,15 +144,16 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     final newZoom = (_baseZoom * details.scale).clamp(1.0, _maxZoom);
     if ((newZoom - _currentZoom).abs() > 0.05) {
       setState(() => _currentZoom = newZoom);
-      _camera.setZoom(newZoom);
+      // Dispatch through controller — handles both camera + AR session
+      ref.read(detectionControllerProvider.notifier).setZoom(newZoom);
     }
   }
 
+  /// Flash toggle — dispatches through DetectionController which sends to
+  /// both the camera plugin (physical torch) and AR session (native sync).
   Future<void> _toggleFlash() async {
     final state = ref.read(detectionControllerProvider);
-    final next = !state.flashOn;
-    await _camera.setFlash(next);
-    await ref.read(detectionControllerProvider.notifier).setFlash(next);
+    await ref.read(detectionControllerProvider.notifier).setFlash(!state.flashOn);
   }
 
   @override
@@ -210,6 +195,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
+          _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
           return GestureDetector(
             onScaleStart: _onScaleStart,
             onScaleUpdate: _onScaleUpdate,
@@ -357,7 +343,6 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                     await ref
                         .read(detectionControllerProvider.notifier)
                         .reset();
-                    await _camera.unlockExposure();
                   } else {
                     context.pushNamed('calibrate');
                   }

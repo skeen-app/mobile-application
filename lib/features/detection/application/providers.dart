@@ -25,10 +25,17 @@ final arSessionProvider = Provider<ArSessionPort>((ref) {
   return svc;
 });
 
+/// Concrete camera service — presentation layer needs the CameraController
+/// getter for the preview widget, so we keep a typed provider.
 final scanCameraServiceProvider = Provider<ScanCameraService>((ref) {
   final svc = ScanCameraService();
   ref.onDispose(svc.dispose);
   return svc;
+});
+
+/// Port-typed camera provider for the application layer (DetectionController).
+final scanCameraPortProvider = Provider<ScanCameraServicePort>((ref) {
+  return ref.watch(scanCameraServiceProvider);
 });
 
 final coordinateTranslatorProvider = Provider<CoordinateTranslator>((ref) {
@@ -53,9 +60,11 @@ final arCapabilitiesProvider = FutureProvider<ArCapabilities>((ref) async {
   return session.probeCapabilities();
 });
 
-/// Readiness evaluator that combines camera + AR streams. Scoped to the
-/// scan screen lifecycle (auto-dispose on unmount).
-final readinessEvaluatorProvider = Provider.autoDispose<ReadinessEvaluator>((ref) {
+/// Readiness evaluator that combines camera + AR streams.
+/// NOT auto-dispose — the screen manages start/stop lifecycle manually,
+/// and ref.read() in initState would trigger premature disposal with
+/// auto-dispose (since nothing ref.watch()es this provider in build).
+final readinessEvaluatorProvider = Provider<ReadinessEvaluator>((ref) {
   final camera = ref.watch(scanCameraServiceProvider);
   final evaluator = ReadinessEvaluator(camera: camera);
   ref.onDispose(evaluator.dispose);

@@ -48,6 +48,41 @@ abstract class ArSessionPort {
   Future<void> setZoom(double zoom);
 }
 
+/// Outbound port for camera-level operations (flash, zoom, image streams).
+/// Separate from [ArSessionPort] because the camera plugin (`camera`) and
+/// the AR session (`skeen.detection/ar`) are independent subsystems —
+/// flash/zoom must work even when AR is unavailable.
+abstract class ScanCameraServicePort {
+  Future<void> initialize();
+  bool get isReady;
+
+  /// Brightness (Y-plane mean 0–255) stream, throttled ~3 Hz.
+  Stream<double> get brightness;
+
+  /// Sharpness (Laplacian variance normalized 0–1) stream, throttled ~3 Hz.
+  Stream<double> get sharpness;
+
+  /// Physical torch LED on the device.
+  Future<void> setFlash(bool on);
+
+  /// Digital zoom.
+  Future<void> setZoom(double level);
+  Future<double> getMaxZoom();
+
+  /// Lock/unlock AE+AF for stable capture.
+  Future<void> lockExposure();
+  Future<void> unlockExposure();
+
+  /// Capture + center-crop to 1:1 + JPEG encode. Returns null on failure.
+  Future<Uint8List?> captureStandardized();
+
+  /// Restart the image stream after capture so brightness/sharpness
+  /// streams resume emitting (they are paused during takePicture).
+  Future<void> restartSampling();
+
+  Future<void> dispose();
+}
+
 /// Encapsulates platform AR feature availability. Returned by
 /// [ArSessionPort.probeCapabilities] so the router can decide which scan
 /// surface to mount.

@@ -3,7 +3,7 @@ import 'dart:async';
 import '../domain/ar_geometry.dart';
 import '../domain/capture_quality.dart';
 import '../domain/focus_quality.dart';
-import '../infrastructure/scan_camera_service.dart';
+import '../domain/ports.dart';
 
 /// Combines brightness, sharpness, and distance streams into a single
 /// [CaptureReadiness] stream. Lives in `application/` because it composes
@@ -13,10 +13,10 @@ import '../infrastructure/scan_camera_service.dart';
 /// N readings stay within a tolerance band, the phone is considered stable.
 class ReadinessEvaluator {
   ReadinessEvaluator({
-    required ScanCameraService camera,
+    required ScanCameraServicePort camera,
   }) : _camera = camera;
 
-  final ScanCameraService _camera;
+  final ScanCameraServicePort _camera;
 
   final StreamController<CaptureReadiness> _readinessController =
       StreamController<CaptureReadiness>.broadcast();

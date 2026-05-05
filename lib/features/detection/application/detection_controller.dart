@@ -87,22 +87,26 @@ class DetectionState {
 }
 
 /// Riverpod controller orchestrating the single-shot AR-AI pipeline:
+///
 /// `start session → live readiness updates → capture standardized frame
 ///  → TFLite classify → hit-test for anchor → persist encrypted (+ image)
 ///  → present floating label`.
 ///
-/// The controller is the only place that talks to multiple ports at once;
-/// individual screens read [DetectionState] and call action methods.
+/// Flash and zoom are dispatched to **both** the camera plugin (physical
+/// torch/zoom) and the AR session (native overlay sync). This ensures the
+/// torch works even on devices where the native AR plugin isn't registered.
 class DetectionController extends StateNotifier<DetectionState> {
   DetectionController({
     required ArSessionPort session,
     required InferenceServicePort inference,
+    required ScanCameraServicePort camera,
     required CoordinateTranslator translator,
     required DetectionResultMapper mapper,
     required LesionRepositoryPort repository,
     required this.patientId,
   })  : _session = session,
         _inference = inference,
+        _camera = camera,
         _translator = translator,
         _mapper = mapper,
         _repository = repository,
@@ -110,6 +114,7 @@ class DetectionController extends StateNotifier<DetectionState> {
 
   final ArSessionPort _session;
   final InferenceServicePort _inference;
+  final ScanCameraServicePort _camera;
   final CoordinateTranslator _translator;
   final DetectionResultMapper _mapper;
   final LesionRepositoryPort _repository;
@@ -138,14 +143,25 @@ class DetectionController extends StateNotifier<DetectionState> {
     }
   }
 
+  /// Toggle flash — dispatches to BOTH camera plugin (physical torch LED)
+  /// and AR session (native overlay sync). The camera plugin call is the
+  /// one that actually turns the torch on; the AR session call syncs the
+  /// native AR view's flash state for consistency.
   Future<void> setFlash(bool on) async {
+    // Camera plugin — this is the real torch control
+    await _camera.setFlash(on);
+    // AR session — sync native overlay (graceful no-op if not registered)
     await _session.setFlash(on);
+    if (!mounted) return;
     state = state.copyWith(flashOn: on);
   }
 
+  /// Set zoom — dual dispatch to camera plugin + AR session.
   Future<void> setZoom(double zoom) async {
     final clamped = zoom.clamp(1.0, 5.0);
+    await _camera.setZoom(clamped);
     await _session.setZoom(clamped);
+    if (!mounted) return;
     state = state.copyWith(zoom: clamped);
   }
 
@@ -157,25 +173,41 @@ class DetectionController extends StateNotifier<DetectionState> {
 
   /// The full capture-classify-persist pipeline.
   ///
-  /// Phases: ready → capturing → standardizing → analyzing → presented
+  /// Flow: ready → capturing → standardizing → analyzing → presented
   ///
   /// JPEG bytes come from the standardized camera capture (center-cropped 1:1).
-  /// The native ARSession runs in parallel for depth/anchor only.
-  Future<void> captureWithBytes({
-    required Uint8List bytes,
+  /// The camera service auto-restarts the image stream after capture, so the
+  /// readiness overlay resumes live updates immediately.
+  Future<void> captureAndClassify({
     required Size previewSize,
   }) async {
     if (state.phase != DetectionPhase.ready) return;
     state = state.copyWith(phase: DetectionPhase.capturing, clearResult: true);
 
     try {
-      // Phase: standardizing
+      // Lock AE/AF for stable exposure during capture
+      await _camera.lockExposure();
+
+      // Phase: standardizing — capture + center-crop to 1:1
       state = state.copyWith(phase: DetectionPhase.standardizing);
+      final bytes = await _camera.captureStandardized();
+      // captureStandardized() auto-restarts the image stream internally
+
+      // Unlock AE/AF so readiness stream sees live updates again
+      await _camera.unlockExposure();
+
+      if (bytes == null || !mounted) {
+        state = state.copyWith(
+          phase: DetectionPhase.ready,
+          errorMessage: 'Capture failed — try again',
+        );
+        return;
+      }
 
       // Compute image hash for dedup + integrity
       final hash = sha256.convert(bytes).toString();
 
-      // Phase: analyzing — run TFLite inference
+      // Phase: analyzing — run TFLite inference on isolate (non-blocking)
       state = state.copyWith(phase: DetectionPhase.analyzing);
       final result = await _inference.classify(bytes);
 
@@ -187,9 +219,29 @@ class DetectionController extends StateNotifier<DetectionState> {
         );
       }
 
-      // Build the bbox from the on-screen reticle (centered square ~33% of
-      // the shorter dimension). When a real detector lands this is the only
-      // line that changes — everything else already speaks BoundingBox.
+      // ── Center-of-Interest Anchoring Strategy ─────────────────────
+      // The model is a classifier (no bounding boxes). The user centers
+      // the lesion in the target ring by UX design, so the initial
+      // raycast origin is viewport center (0.5, 0.5).
+      //
+      // Optional refinement: find the centroid of the darkest blob in
+      // the captured image and use that as the raycast origin instead.
+      // This runs in an isolate to avoid blocking the AR render thread.
+      final anchor = await _translator.anchorAtCenterOfInterest(
+        capturedBytes: bytes,
+      );
+
+      if (kDebugMode && anchor != null) {
+        debugPrint(
+          'AR Anchor created at: '
+          '(${anchor.translation.x.toStringAsFixed(3)}, '
+          '${anchor.translation.y.toStringAsFixed(3)}, '
+          '${anchor.translation.z.toStringAsFixed(3)})',
+        );
+      }
+
+      // Build a synthetic BoundingBox for the mapper (metadata/display).
+      // Center-positioned in the preview since the model assumes centered input.
       final shortest = previewSize.shortestSide;
       final side = shortest * 0.33;
       final bbox = BoundingBox(
@@ -200,8 +252,6 @@ class DetectionController extends StateNotifier<DetectionState> {
         frameWidth: previewSize.width,
         frameHeight: previewSize.height,
       );
-
-      final anchor = await _translator.bboxToAnchor(bbox);
 
       final analysis = _mapper.toAnalysis(
         result: result,
@@ -215,6 +265,7 @@ class DetectionController extends StateNotifier<DetectionState> {
       // Persist encrypted (metadata + image blob AES-256)
       await _repository.save(analysis, jpegBytes: bytes);
 
+      if (!mounted) return;
       state = state.copyWith(
         phase: DetectionPhase.presented,
         result: result,
@@ -224,6 +275,7 @@ class DetectionController extends StateNotifier<DetectionState> {
       );
     } catch (e, st) {
       if (kDebugMode) debugPrint('Capture pipeline failed: $e\n$st');
+      if (!mounted) return;
       state = state.copyWith(
         phase: DetectionPhase.failed,
         errorMessage: 'Capture failed: $e',
@@ -234,6 +286,10 @@ class DetectionController extends StateNotifier<DetectionState> {
   /// Reset the floating label and return to live preview. Called when the
   /// user taps the "Scan again" CTA after seeing a result.
   Future<void> reset() async {
+    // Ensure the image stream is running for readiness updates
+    await _camera.restartSampling();
+    await _camera.unlockExposure();
+    if (!mounted) return;
     state = state.copyWith(
       phase: DetectionPhase.ready,
       clearResult: true,
@@ -241,10 +297,12 @@ class DetectionController extends StateNotifier<DetectionState> {
     );
   }
 
-  Future<Offset?> projectAnchorToScreen() async {
+  /// Per-frame world-anchor → screen-pixel projection for the floating
+  /// diagnosis label. Returns pixel coordinates in the preview widget space.
+  Future<Offset?> projectAnchorToScreen({required Size previewSize}) async {
     final anchor = state.anchor;
     if (anchor == null) return null;
-    return _translator.anchorToScreen(anchor);
+    return _translator.anchorToScreen(anchor, previewSize: previewSize);
   }
 
   @override
@@ -264,11 +322,10 @@ final detectionControllerProvider =
     return DetectionController(
       session: ref.watch(arSessionProvider),
       inference: ref.watch(inferenceServiceProvider),
+      camera: ref.watch(scanCameraPortProvider),
       translator: ref.watch(coordinateTranslatorProvider),
       mapper: ref.watch(detectionResultMapperProvider),
       repository: ref.watch(lesionRepositoryProvider),
-      // Patient-context aggregate not yet built; auth user.id is the
-      // canonical owner identifier in the meantime.
       patientId: user?.id ?? 'anonymous',
     )..bootstrap();
   },
