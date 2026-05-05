@@ -6,6 +6,8 @@
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Skeen uses your location to show the local UV index and recommend the right SPF for your skin.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Skeen uses the camera to capture clinical-quality photos of your skin lesions for on-device AI analysis.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
