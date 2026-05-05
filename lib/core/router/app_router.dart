@@ -18,6 +18,7 @@ import '../../features/auth/presentation/screens/registration_success_screen.dar
 import '../../features/auth/presentation/screens/terms_screen.dart';
 import '../../features/detection/presentation/screens/calibrate_screen.dart';
 import '../../features/detection/presentation/screens/scan_router_screen.dart';
+import '../../features/detection/presentation/screens/triage_result_screen.dart';
 import '../../features/detection/presentation/screens/upload_photo_screen.dart';
 import '../../features/experts/presentation/screens/experts_screen.dart';
 import '../../features/patient/presentation/screens/body_map_screen.dart';
@@ -159,6 +160,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/upload',
         name: 'upload-photo',
         builder: (context, state) => const UploadPhotoScreen(),
+      ),
+      GoRoute(
+        path: '/scan/result',
+        name: 'triage-result',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return TriageResultScreen(
+            analysisId: extra['analysisId'] as String? ?? '',
+            capturedImageBytes:
+                extra['capturedImageBytes'] as Uint8List? ?? Uint8List(0),
+            bodyRegion: extra['bodyRegion'] as String?,
+          );
+        },
       ),
 
       // Experts (consultation directory)

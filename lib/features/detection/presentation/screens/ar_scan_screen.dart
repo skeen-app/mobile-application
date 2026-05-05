@@ -9,31 +9,30 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
 import '../../application/detection_controller.dart';
+import '../../application/providers.dart';
+import '../../application/readiness_evaluator.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/ar_distance_ring.dart';
 import '../widgets/ar_reticle_overlay.dart';
+import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/floating_diagnosis_label.dart';
+import '../widgets/readiness_checklist_overlay.dart';
 import '../widgets/scan_capture_button.dart';
-import '../widgets/scan_quality_hint.dart';
 
-/// AR-AI bridge screen — Tasks 1, 2 and 3 wired together.
+/// AR-AI bridge screen — full pipeline:
+/// assisted capture → TFLite inference → AR-anchored popup → triage result.
 ///
 /// Layout (top → bottom):
 ///   • Skeen top app bar
-///   • Camera preview (existing `camera` plugin) with overlays:
+///   • Camera preview with overlays:
 ///       - AR reticle (corner brackets)
-///       - 3D Target Ring driven by [DetectionController.distance]
-///       - Floating diagnosis label, anchored to the lesion via
-///         CoordinateTranslator.anchorToScreen on every frame
-///       - Right-edge zoom slider, top-right flash toggle
-///   • Quality hint card + capture row (gallery / shutter / scan again)
-///
-/// The native ARSession runs in parallel via SkeenArPlugin (Kotlin/Swift)
-/// to feed depth + hit-test results; the Flutter side never owns the
-/// ARView render loop — keeping inference non-blocking and the camera
-/// preview at native frame rate.
+///       - 3D Target Ring (distance)
+///       - Floating diagnosis label (anchored to lesion after inference)
+///       - Readiness checklist overlay (4-item quality gate)
+///       - Flash toggle, pinch-to-zoom
+///   • Capture row (gallery / shutter / scan again)
 class ArScanScreen extends ConsumerStatefulWidget {
   const ArScanScreen({super.key});
 
@@ -43,31 +42,51 @@ class ArScanScreen extends ConsumerStatefulWidget {
 
 class _ArScanScreenState extends ConsumerState<ArScanScreen>
     with WidgetsBindingObserver {
-  final ScanCameraService _camera = ScanCameraService();
-  StreamSubscription<double>? _brightnessSub;
+  late final ScanCameraService _camera;
+  late final ReadinessEvaluator _evaluator;
+  StreamSubscription<CaptureReadiness>? _readinessSub;
   Timer? _anchorProjector;
 
   CaptureQuality _quality = CaptureQuality.initial;
+  CaptureReadiness _readiness = CaptureReadiness.initializing;
   Offset? _anchorScreenPosition;
   Size _previewSize = Size.zero;
   String? _initError;
+
+  // Pinch-to-zoom state
+  double _currentZoom = 1.0;
+  double _maxZoom = 5.0;
+  double _baseZoom = 1.0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _camera = ref.read(scanCameraServiceProvider);
+    _evaluator = ref.read(readinessEvaluatorProvider);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     try {
       await _camera.initialize();
-      _brightnessSub = _camera.brightness.listen((b) {
+      _maxZoom = await _camera.getMaxZoom();
+
+      // Start readiness evaluation
+      final arSession = ref.read(arSessionProvider);
+      _evaluator.start(distanceStream: arSession.distance);
+
+      _readinessSub = _evaluator.readiness.listen((r) {
         if (!mounted) return;
-        setState(() => _quality = CaptureQuality.fromBrightness(b));
+        setState(() {
+          _readiness = r;
+          _quality = r.lighting;
+        });
+        // Update the detection controller readiness state
+        ref.read(detectionControllerProvider.notifier).updateReadiness(r);
       });
-      // Re-project the world anchor onto screen coords every 33 ms (~30
-      // fps) so the floating label tracks the lesion as the phone moves.
+
+      // Re-project the world anchor onto screen coords every 33 ms (~30 fps)
       _anchorProjector = Timer.periodic(
         const Duration(milliseconds: 33),
         (_) => _refreshAnchorPosition(),
@@ -91,7 +110,6 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     final pt = await controller.projectAnchorToScreen();
     if (!mounted) return;
     if (pt != null && _previewSize != Size.zero) {
-      // Plugin returns normalized [0,1] coords — map to local pixels.
       final px = Offset(pt.dx * _previewSize.width,
           pt.dy * _previewSize.height);
       setState(() => _anchorScreenPosition = px);
@@ -115,7 +133,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _brightnessSub?.cancel();
+    _readinessSub?.cancel();
     _anchorProjector?.cancel();
     _camera.dispose();
     super.dispose();
@@ -125,36 +143,63 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     final controller = ref.read(detectionControllerProvider.notifier);
     final state = ref.read(detectionControllerProvider);
 
-    // After a presented result, the same shutter resets and arms again.
     if (state.phase == DetectionPhase.presented) {
-      await controller.reset();
+      // After result: show body region picker → navigate to triage
+      _navigateToTriage(state);
       return;
     }
 
-    // Pull JPEG from the camera plugin; the native ARSession reads its
-    // own frames in parallel for depth/anchor.
-    final file = await _camera.capture();
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    await _classifyBytes(bytes);
+    // Lock AE/AF before capture for stable exposure
+    await _camera.lockExposure();
+
+    // Capture standardized (center-cropped 1:1) image
+    final bytes = await _camera.captureStandardized();
+
+    // Unlock for next scan
+    await _camera.unlockExposure();
+
+    if (bytes == null) return;
+    await controller.captureWithBytes(bytes: bytes, previewSize: _previewSize);
   }
 
-  Future<void> _classifyBytes(Uint8List bytes) async {
-    final ctl = ref.read(detectionControllerProvider.notifier);
-    await ctl.captureWithBytes(bytes: bytes, previewSize: _previewSize);
+  Future<void> _navigateToTriage(DetectionState state) async {
+    if (state.savedAnalysisId == null || state.capturedImageBytes == null) {
+      return;
+    }
+
+    // Show body region picker
+    final region = await BodyRegionPicker.show(context);
+
+    if (!mounted) return;
+    context.pushNamed(
+      'triage-result',
+      extra: {
+        'analysisId': state.savedAnalysisId!,
+        'capturedImageBytes': state.capturedImageBytes!,
+        'bodyRegion': region,
+      },
+    );
   }
 
-  Future<void> _handleZoom(double v) async {
-    await _camera.controller?.setZoomLevel(v);
-    await ref.read(detectionControllerProvider.notifier).setZoom(v);
+  // ── Pinch-to-zoom handlers ────────────────────────────────────────
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _baseZoom = _currentZoom;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    final newZoom = (_baseZoom * details.scale).clamp(1.0, _maxZoom);
+    if ((newZoom - _currentZoom).abs() > 0.05) {
+      setState(() => _currentZoom = newZoom);
+      _camera.setZoom(newZoom);
+      ref.read(detectionControllerProvider.notifier).setZoom(newZoom);
+    }
   }
 
   Future<void> _handleFlash() async {
     final state = ref.read(detectionControllerProvider);
     final next = !state.flashOn;
-    await _camera.controller?.setFlashMode(
-      next ? FlashMode.torch : FlashMode.off,
-    );
+    await _camera.setFlash(next);
     await ref.read(detectionControllerProvider.notifier).setFlash(next);
   }
 
@@ -198,73 +243,109 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
       child: LayoutBuilder(
         builder: (context, constraints) {
           _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_initError != null)
-                _CameraUnavailable(message: _initError!)
-              else if (_camera.isReady)
-                _FittedPreview(controller: _camera.controller!)
-              else
-                const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.violetaClaro,
+          return GestureDetector(
+            onScaleStart: _onScaleStart,
+            onScaleUpdate: _onScaleUpdate,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_initError != null)
+                  _CameraUnavailable(message: _initError!)
+                else if (_camera.isReady)
+                  _FittedPreview(controller: _camera.controller!)
+                else
+                  const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.violetaClaro,
+                      ),
                     ),
                   ),
-                ),
-              ArReticleOverlay(quality: _quality),
-              ArDistanceRing(distance: detection.distance),
-              if (detection.result != null)
-                _AnchoredLabel(
-                  position: _anchorScreenPosition ??
-                      Offset(_previewSize.width / 2,
-                          _previewSize.height * 0.28),
-                  child: FloatingDiagnosisLabel(result: detection.result!),
-                ),
-              Positioned(
-                top: 16,
-                right: 16,
-                child: CameraFlashButton(
-                  isOn: detection.flashOn,
-                  onTap: _handleFlash,
-                ),
-              ),
-              Positioned(
-                top: 70,
-                right: 16,
-                bottom: 16,
-                child: CameraZoomSlider(
-                  value: detection.zoom,
-                  onChanged: _handleZoom,
-                ),
-              ),
-              if (detection.phase == DetectionPhase.analyzing)
-                Container(
-                  color: Colors.black.withValues(alpha: 0.35),
-                  child: const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            AppColors.violetaClaro,
-                          ),
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          'Running on-device analysis…',
-                          style: TextStyle(
-                            fontFamily: 'Poppins',
-                            color: AppColors.violetaClaro,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
+                ArReticleOverlay(quality: _quality),
+                ArDistanceRing(distance: detection.distance),
+
+                // Floating diagnosis label — anchored to the lesion
+                if (detection.result != null)
+                  _AnchoredLabel(
+                    position: _anchorScreenPosition ??
+                        Offset(_previewSize.width / 2,
+                            _previewSize.height * 0.28),
+                    child: FloatingDiagnosisLabel(
+                      result: detection.result!,
+                      onTap: () => _navigateToTriage(detection),
                     ),
                   ),
+
+                // Readiness checklist (hide during analysis/presented)
+                if (detection.phase == DetectionPhase.ready ||
+                    detection.phase == DetectionPhase.initializing)
+                  ReadinessChecklistOverlay(readiness: _readiness),
+
+                // Flash toggle
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: CameraFlashButton(
+                    isOn: detection.flashOn,
+                    onTap: _handleFlash,
+                  ),
                 ),
-            ],
+
+                // Zoom indicator
+                if (_currentZoom > 1.05)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.background.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_currentZoom.toStringAsFixed(1)}×',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: AppColors.violetaClaro,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Analyzing overlay
+                if (detection.phase == DetectionPhase.analyzing ||
+                    detection.phase == DetectionPhase.standardizing)
+                  Container(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.violetaClaro,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            detection.phase == DetectionPhase.standardizing
+                                ? 'Standardizing image…'
+                                : 'Running on-device analysis…',
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              color: AppColors.violetaClaro,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           );
         },
       ),
@@ -274,14 +355,14 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
   Widget _buildBottomControls(DetectionState detection) {
     final isPresented = detection.phase == DetectionPhase.presented;
     final isBusy = detection.phase == DetectionPhase.capturing ||
-        detection.phase == DetectionPhase.analyzing;
+        detection.phase == DetectionPhase.analyzing ||
+        detection.phase == DetectionPhase.standardizing;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          ScanQualityHint(quality: _quality),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -303,6 +384,8 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     await ref
                         .read(detectionControllerProvider.notifier)
                         .reset();
+                    // Restart camera streaming
+                    await _camera.unlockExposure();
                   } else {
                     context.pushNamed('calibrate');
                   }
@@ -324,7 +407,7 @@ class _AnchoredLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      left: position.dx - 130,
+      left: (position.dx - 130).clamp(0.0, double.infinity),
       top: (position.dy - 80).clamp(0.0, double.infinity),
       child: child,
     );

@@ -71,8 +71,12 @@ class ArCapabilities {
 /// table; callers never see ciphertext.
 abstract class LesionRepositoryPort {
   Future<void> initialize();
-  Future<void> save(LesionAnalysis analysis);
+  Future<void> save(LesionAnalysis analysis, {Uint8List? jpegBytes});
   Future<List<LesionAnalysis>> findByPatient(String patientId);
-  Future<LesionAnalysis?> findById(String id);
+  Future<LesionAnalysis?> findById(String id, {bool includeImage = false});
   Future<void> delete(String id);
+
+  /// Records pending cloud upload (future feature). Schema-ready.
+  Future<List<LesionAnalysis>> findPendingUpload();
+  Future<void> markUploaded(String id);
 }

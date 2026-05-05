@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -145,7 +144,7 @@ class _CalibrateScreenState extends State<CalibrateScreen> {
                           height: double.infinity,
                           decoration: BoxDecoration(
                             border: Border.all(
-                              color: AppColors.violeta.withOpacity(0.5),
+                              color: AppColors.violeta.withValues(alpha: 0.5),
                               width: 2,
                             ),
                           ),

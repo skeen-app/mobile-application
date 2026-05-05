@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
 import '../domain/ar_geometry.dart';
+import '../domain/capture_quality.dart';
 import '../domain/inference_result.dart';
 import '../domain/ports.dart';
 import 'coordinate_translator.dart';
@@ -19,6 +21,7 @@ enum DetectionPhase {
   initializing,
   ready,
   capturing,
+  standardizing,
   analyzing,
   presented,
   failed,
@@ -28,30 +31,36 @@ enum DetectionPhase {
 class DetectionState {
   const DetectionState({
     required this.phase,
+    this.readiness = CaptureReadiness.initializing,
     this.distance = const CaptureDistance.unknown(),
     this.result,
     this.anchor,
     this.savedAnalysisId,
+    this.capturedImageBytes,
     this.flashOn = false,
     this.zoom = 1.0,
     this.errorMessage,
   });
 
   final DetectionPhase phase;
+  final CaptureReadiness readiness;
   final CaptureDistance distance;
   final InferenceResult? result;
   final WorldAnchor? anchor;
   final String? savedAnalysisId;
+  final Uint8List? capturedImageBytes;
   final bool flashOn;
   final double zoom;
   final String? errorMessage;
 
   DetectionState copyWith({
     DetectionPhase? phase,
+    CaptureReadiness? readiness,
     CaptureDistance? distance,
     InferenceResult? result,
     WorldAnchor? anchor,
     String? savedAnalysisId,
+    Uint8List? capturedImageBytes,
     bool? flashOn,
     double? zoom,
     String? errorMessage,
@@ -60,12 +69,16 @@ class DetectionState {
   }) {
     return DetectionState(
       phase: phase ?? this.phase,
+      readiness: readiness ?? this.readiness,
       distance: distance ?? this.distance,
       result: clearResult ? null : (result ?? this.result),
       anchor: clearResult ? null : (anchor ?? this.anchor),
       savedAnalysisId: clearResult
           ? null
           : (savedAnalysisId ?? this.savedAnalysisId),
+      capturedImageBytes: clearResult
+          ? null
+          : (capturedImageBytes ?? this.capturedImageBytes),
       flashOn: flashOn ?? this.flashOn,
       zoom: zoom ?? this.zoom,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -74,8 +87,9 @@ class DetectionState {
 }
 
 /// Riverpod controller orchestrating the single-shot AR-AI pipeline:
-/// `start session → live distance updates → capture frame → TFLite classify
-/// → hit-test for anchor → persist encrypted → present floating label`.
+/// `start session → live readiness updates → capture standardized frame
+///  → TFLite classify → hit-test for anchor → persist encrypted (+ image)
+///  → present floating label`.
 ///
 /// The controller is the only place that talks to multiple ports at once;
 /// individual screens read [DetectionState] and call action methods.
@@ -135,13 +149,18 @@ class DetectionController extends StateNotifier<DetectionState> {
     state = state.copyWith(zoom: clamped);
   }
 
-  /// The capture pipeline. Designed to keep the AR view at 60 fps:
-  /// inference runs in an isolate (see [TfliteInferenceService]) and we
-  /// only block the controller's own state machine, not the render loop.
+  /// Update readiness from the ReadinessEvaluator stream.
+  void updateReadiness(CaptureReadiness readiness) {
+    if (!mounted) return;
+    state = state.copyWith(readiness: readiness);
+  }
+
+  /// The full capture-classify-persist pipeline.
   ///
-  /// JPEG bytes come from the camera plugin (which owns the preview
-  /// surface), not from the AR session — the native ARSession runs in
-  /// parallel for depth/anchor only.
+  /// Phases: ready → capturing → standardizing → analyzing → presented
+  ///
+  /// JPEG bytes come from the standardized camera capture (center-cropped 1:1).
+  /// The native ARSession runs in parallel for depth/anchor only.
   Future<void> captureWithBytes({
     required Uint8List bytes,
     required Size previewSize,
@@ -150,8 +169,23 @@ class DetectionController extends StateNotifier<DetectionState> {
     state = state.copyWith(phase: DetectionPhase.capturing, clearResult: true);
 
     try {
+      // Phase: standardizing
+      state = state.copyWith(phase: DetectionPhase.standardizing);
+
+      // Compute image hash for dedup + integrity
+      final hash = sha256.convert(bytes).toString();
+
+      // Phase: analyzing — run TFLite inference
       state = state.copyWith(phase: DetectionPhase.analyzing);
       final result = await _inference.classify(bytes);
+
+      if (kDebugMode) {
+        debugPrint(
+          'Inference result: ${result.topLabel.display} '
+          '(${(result.confidence * 100).toStringAsFixed(1)}%) '
+          'warning=${result.warningLevel}',
+        );
+      }
 
       // Build the bbox from the on-screen reticle (centered square ~33% of
       // the shorter dimension). When a real detector lands this is the only
@@ -175,14 +209,18 @@ class DetectionController extends StateNotifier<DetectionState> {
         patientId: patientId,
         anchor: anchor,
         distanceCm: state.distance.isKnown ? state.distance.cm : null,
+        imageHash: hash,
       );
-      await _repository.save(analysis);
+
+      // Persist encrypted (metadata + image blob AES-256)
+      await _repository.save(analysis, jpegBytes: bytes);
 
       state = state.copyWith(
         phase: DetectionPhase.presented,
         result: result,
         anchor: anchor,
         savedAnalysisId: analysis.id,
+        capturedImageBytes: bytes,
       );
     } catch (e, st) {
       if (kDebugMode) debugPrint('Capture pipeline failed: $e\n$st');

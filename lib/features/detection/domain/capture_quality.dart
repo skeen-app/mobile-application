@@ -83,3 +83,84 @@ class CaptureQuality {
       level == CaptureQualityLevel.good ||
       level == CaptureQualityLevel.excellent;
 }
+
+/// Individual readiness check item for the on-screen checklist overlay.
+@immutable
+class ReadinessItem {
+  const ReadinessItem({
+    required this.label,
+    required this.passed,
+    required this.hint,
+  });
+
+  final String label;
+  final bool passed;
+  final String hint;
+}
+
+/// Composite value object that combines all four quality signals into a
+/// single capture-readiness gate. The AR scan screen uses [checklist] to
+/// render the live guidance overlay, and [isReady] to enable/disable the
+/// shutter button.
+@immutable
+class CaptureReadiness {
+  const CaptureReadiness({
+    required this.lighting,
+    required this.focus,
+    required this.distance,
+    required this.isStable,
+  });
+
+  final CaptureQuality lighting;
+
+  /// Focus quality from Laplacian variance. Imported from `focus_quality.dart`.
+  final bool focus; // true = sharp enough
+
+  /// Distance from the AR depth sensor / camera estimate.
+  final bool distance; // true = in acceptable range
+
+  /// Gyroscope-derived stability flag (debounced 500ms).
+  final bool isStable;
+
+  bool get isReady =>
+      lighting.canCapture && focus && distance && isStable;
+
+  List<ReadinessItem> get checklist => [
+        ReadinessItem(
+          label: 'Lighting',
+          passed: lighting.canCapture,
+          hint: lighting.hint,
+        ),
+        ReadinessItem(
+          label: 'Focus',
+          passed: focus,
+          hint: focus
+              ? 'Focus is locked — hold steady'
+              : 'Hold still and let autofocus settle',
+        ),
+        ReadinessItem(
+          label: 'Distance',
+          passed: distance,
+          hint: distance
+              ? 'Distance is optimal (~15 cm)'
+              : 'Hold the camera 10–20 cm from the lesion',
+        ),
+        ReadinessItem(
+          label: 'Stability',
+          passed: isStable,
+          hint: isStable
+              ? 'Steady — ready to capture'
+              : 'Hold still for a moment',
+        ),
+      ];
+
+  /// All checks pass count (0–4).
+  int get passedCount => checklist.where((i) => i.passed).length;
+
+  static const CaptureReadiness initializing = CaptureReadiness(
+    lighting: CaptureQuality.initial,
+    focus: false,
+    distance: false,
+    isStable: false,
+  );
+}

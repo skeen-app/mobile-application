@@ -2,10 +2,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/ports.dart';
 import '../infrastructure/ar_session_service.dart';
+import '../infrastructure/scan_camera_service.dart';
 import '../infrastructure/secure_lesion_repository.dart';
 import '../infrastructure/tflite_inference_service.dart';
 import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
+import 'readiness_evaluator.dart';
 
 /// DI roots for the Detection bounded context. Kept in `application/` so
 /// presentation only ever talks to the domain ports — never directly to
@@ -19,6 +21,12 @@ final inferenceServiceProvider = Provider<InferenceServicePort>((ref) {
 
 final arSessionProvider = Provider<ArSessionPort>((ref) {
   final svc = ArSessionService();
+  ref.onDispose(svc.stop);
+  return svc;
+});
+
+final scanCameraServiceProvider = Provider<ScanCameraService>((ref) {
+  final svc = ScanCameraService();
   ref.onDispose(svc.dispose);
   return svc;
 });
@@ -43,4 +51,13 @@ final lesionRepositoryProvider = Provider<LesionRepositoryPort>((ref) {
 final arCapabilitiesProvider = FutureProvider<ArCapabilities>((ref) async {
   final session = ref.watch(arSessionProvider);
   return session.probeCapabilities();
+});
+
+/// Readiness evaluator that combines camera + AR streams. Scoped to the
+/// scan screen lifecycle (auto-dispose on unmount).
+final readinessEvaluatorProvider = Provider.autoDispose<ReadinessEvaluator>((ref) {
+  final camera = ref.watch(scanCameraServiceProvider);
+  final evaluator = ReadinessEvaluator(camera: camera);
+  ref.onDispose(evaluator.dispose);
+  return evaluator;
 });

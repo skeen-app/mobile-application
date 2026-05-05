@@ -43,19 +43,32 @@ class TfliteInferenceService implements InferenceServicePort {
       throw StateError('InferenceService.load() must be called before classify');
     }
 
+    final sw = Stopwatch()..start();
+
     // Decode + resize off the main isolate too — `image` is pure Dart and
     // can be heavy on a 12 MP capture.
     final input = await compute(_preprocess, jpegBytes);
+    final preprocessMs = sw.elapsedMilliseconds;
 
     // Allocate the output buffer in the shape the interpreter expects.
     final output = List.filled(_numClasses, 0.0)
         .reshape<double>([1, _numClasses]);
 
     await isolate.run(input, output);
+    final totalMs = sw.elapsedMilliseconds;
+    sw.stop();
+
+    if (kDebugMode) {
+      debugPrint(
+        'TFLite inference: preprocess=${preprocessMs}ms, '
+        'total=${totalMs}ms (inference=${totalMs - preprocessMs}ms)',
+      );
+    }
 
     final scores = (output[0] as List).cast<double>();
     return InferenceResult(scores: scores);
   }
+
 
   @override
   Future<void> dispose() async {

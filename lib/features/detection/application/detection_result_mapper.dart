@@ -21,6 +21,7 @@ class DetectionResultMapper {
     String? bodyRegion,
     double? distanceCm,
     DateTime? capturedAt,
+    String? imageHash,
   }) {
     return LesionAnalysis(
       id: _uuid.v4(),
@@ -31,6 +32,7 @@ class DetectionResultMapper {
       capturedAt: capturedAt ?? DateTime.now(),
       bodyRegion: bodyRegion,
       distanceCm: distanceCm,
+      imageHash: imageHash,
     );
   }
 }

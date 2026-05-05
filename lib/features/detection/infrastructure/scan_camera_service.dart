@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
+import 'package:image/image.dart' as img;
 
 /// Infrastructure wrapper around the `camera` plugin scoped to the AR scan
-/// flow. Owns the [CameraController] lifecycle and exposes a throttled
-/// luminance stream that the presentation layer turns into quality guidance.
+/// flow. Owns the [CameraController] lifecycle and exposes throttled
+/// luminance + sharpness streams that the presentation layer turns into
+/// quality guidance for assisted capture.
 class ScanCameraService {
   ScanCameraService();
 
@@ -15,6 +17,8 @@ class ScanCameraService {
   DateTime _lastSample = DateTime.fromMillisecondsSinceEpoch(0);
   final StreamController<double> _brightnessController =
       StreamController<double>.broadcast();
+  final StreamController<double> _sharpnessController =
+      StreamController<double>.broadcast();
 
   CameraController? get controller => _controller;
   bool get isReady => _controller?.value.isInitialized ?? false;
@@ -22,6 +26,10 @@ class ScanCameraService {
   /// Stream of mean Y-plane brightness (0–255), throttled to ~3 Hz to keep
   /// the main isolate responsive while still feeling live to the user.
   Stream<double> get brightness => _brightnessController.stream;
+
+  /// Stream of sharpness scores (0–1), derived from Laplacian variance on
+  /// a sparse Y-plane subsample. Same throttle cadence as brightness.
+  Stream<double> get sharpness => _sharpnessController.stream;
 
   Future<void> initialize() async {
     final cameras = await availableCameras();
@@ -68,8 +76,7 @@ class ScanCameraService {
     final bytes = plane.bytes;
     if (bytes.isEmpty) return;
 
-    // Sparse subsample: ~1024 samples spread across the plane keeps the work
-    // tiny regardless of resolution.
+    // ── Brightness: sparse subsample ~1024 samples ──────────────────
     const samples = 1024;
     final step = bytes.length ~/ samples;
     if (step <= 0) return;
@@ -79,9 +86,45 @@ class ScanCameraService {
       sum += bytes[i];
       count++;
     }
-    final mean = sum / count;
+    final meanBrightness = sum / count;
     if (!_brightnessController.isClosed) {
-      _brightnessController.add(mean);
+      _brightnessController.add(meanBrightness);
+    }
+
+    // ── Sharpness: Laplacian variance on sparse grid ────────────────
+    // Use a 3×3 Laplacian kernel approximation on a sparse grid of the
+    // Y plane. The variance of the Laplacian output correlates with focus
+    // sharpness — higher variance = sharper image.
+    final width = plane.bytesPerRow;
+    final height = bytes.length ~/ width;
+    if (width < 3 || height < 3) return;
+
+    const gridStep = 8; // sample every 8th pixel for speed
+    var lapSum = 0.0;
+    var lapSumSq = 0.0;
+    var lapCount = 0;
+    for (var y = 1; y < height - 1; y += gridStep) {
+      for (var x = 1; x < width - 1; x += gridStep) {
+        final center = bytes[y * width + x];
+        final top = bytes[(y - 1) * width + x];
+        final bottom = bytes[(y + 1) * width + x];
+        final left = bytes[y * width + (x - 1)];
+        final right = bytes[y * width + (x + 1)];
+        final laplacian = (4 * center - top - bottom - left - right).abs();
+        lapSum += laplacian;
+        lapSumSq += laplacian * laplacian;
+        lapCount++;
+      }
+    }
+    if (lapCount > 0) {
+      final mean = lapSum / lapCount;
+      final variance = (lapSumSq / lapCount) - (mean * mean);
+      // Normalize variance to 0–1 range. Empirically, dermatology macro
+      // photos at ~15 cm produce variance 200–2000+ for sharp frames.
+      final normalized = (variance / 2000.0).clamp(0.0, 1.0);
+      if (!_sharpnessController.isClosed) {
+        _sharpnessController.add(normalized);
+      }
     }
   }
 
@@ -96,6 +139,55 @@ class ScanCameraService {
     }
   }
 
+  /// Lock auto-exposure and auto-focus to stabilize image before capture.
+  Future<void> lockExposure() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.setExposureMode(ExposureMode.locked);
+      await controller.setFocusMode(FocusMode.locked);
+    } catch (e) {
+      if (kDebugMode) debugPrint('AE/AF lock failed: $e');
+    }
+  }
+
+  /// Unlock auto-exposure and auto-focus after capture.
+  Future<void> unlockExposure() async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.setExposureMode(ExposureMode.auto);
+      await controller.setFocusMode(FocusMode.auto);
+    } catch (e) {
+      if (kDebugMode) debugPrint('AE/AF unlock failed: $e');
+    }
+  }
+
+  /// Capture + standardize: take picture, center-crop to 1:1, encode as
+  /// JPEG bytes. The resulting image is standardized for model input
+  /// regardless of device camera resolution or aspect ratio.
+  Future<Uint8List?> captureStandardized() async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return null;
+    if (_isStreaming) {
+      try {
+        await controller.stopImageStream();
+      } catch (_) {}
+      _isStreaming = false;
+    }
+    try {
+      final file = await controller.takePicture();
+      final raw = await file.readAsBytes();
+
+      // Center-crop to 1:1 in an isolate to keep UI responsive.
+      return await compute(_centerCropJpeg, raw);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Capture failed: $e');
+      return null;
+    }
+  }
+
+  /// Legacy capture without standardization (for fallback compatibility).
   Future<XFile?> capture() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return null;
@@ -113,6 +205,39 @@ class ScanCameraService {
     }
   }
 
+  /// Set the zoom level. Called by pinch gesture handler.
+  Future<void> setZoom(double level) async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.setZoomLevel(level);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Zoom failed: $e');
+    }
+  }
+
+  /// Toggle flash mode.
+  Future<void> setFlash(bool on) async {
+    final controller = _controller;
+    if (controller == null) return;
+    try {
+      await controller.setFlashMode(on ? FlashMode.torch : FlashMode.off);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Flash toggle failed: $e');
+    }
+  }
+
+  /// Get the maximum zoom level supported by the device camera.
+  Future<double> getMaxZoom() async {
+    final controller = _controller;
+    if (controller == null) return 5.0;
+    try {
+      return (await controller.getMaxZoomLevel()).clamp(1.0, 8.0);
+    } catch (_) {
+      return 5.0;
+    }
+  }
+
   Future<void> dispose() async {
     if (_isStreaming) {
       try {
@@ -123,5 +248,21 @@ class ScanCameraService {
     await _controller?.dispose();
     _controller = null;
     await _brightnessController.close();
+    await _sharpnessController.close();
   }
+}
+
+/// Top-level function for `compute()`. Decodes the JPEG, center-crops to
+/// 1:1 aspect ratio (uses the shorter dimension), re-encodes as JPEG.
+Uint8List _centerCropJpeg(Uint8List raw) {
+  final decoded = img.decodeImage(raw);
+  if (decoded == null) return raw;
+
+  final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+  final left = (decoded.width - side) ~/ 2;
+  final top = (decoded.height - side) ~/ 2;
+
+  final cropped = img.copyCrop(decoded,
+      x: left, y: top, width: side, height: side);
+  return Uint8List.fromList(img.encodeJpg(cropped, quality: 92));
 }

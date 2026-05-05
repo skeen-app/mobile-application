@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:encrypt/encrypt.dart' as enc;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -11,18 +12,16 @@ import '../domain/lesion_analysis.dart';
 import '../domain/ports.dart';
 
 /// Encrypted local persistence of [LesionAnalysis]. Uses SQLite for indexed
-/// queries and AES-256-CBC for the sensitive payload column.
+/// queries and AES-256-CBC for the sensitive payload column + image blob.
 ///
-/// Why hybrid (plaintext index columns + encrypted blob) instead of full
-/// SQLCipher: the project depends on `sqflite`, which has no built-in
-/// SQLCipher binding on all platforms. Encrypting only the payload column
-/// gives us the AES-256 confidentiality the spec asked for while keeping
-/// the dependency surface small and queryable. The 256-bit key lives in
-/// the platform keystore (Keychain on iOS, EncryptedSharedPreferences on
-/// Android) via `flutter_secure_storage`.
+/// Schema v2 adds encrypted image storage for future cloud upload:
+///   • `image_blob` — AES-256-CBC encrypted JPEG bytes (binary BLOB)
+///   • `image_iv`   — IV for image blob decryption
+///   • `image_hash` — SHA-256 hex of plaintext JPEG (queryable w/o decrypt)
+///   • `pending_upload` — 1 = needs sync, 0 = uploaded (future feature)
 ///
-/// Migration path: when SQLCipher integration is approved, the column
-/// schema stays the same — only the encryption layer flips off.
+/// The 256-bit key lives in the platform keystore (Keychain on iOS,
+/// EncryptedSharedPreferences on Android) via `flutter_secure_storage`.
 class SecureLesionRepository implements LesionRepositoryPort {
   SecureLesionRepository({FlutterSecureStorage? secureStorage})
       : _secureStorage = secureStorage ?? const FlutterSecureStorage();
@@ -45,7 +44,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
 
     _db = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE $_table (
@@ -55,12 +54,36 @@ class SecureLesionRepository implements LesionRepositoryPort {
             confidence      REAL NOT NULL,
             captured_at     INTEGER NOT NULL,
             payload_iv      TEXT NOT NULL,
-            payload_cipher  TEXT NOT NULL
+            payload_cipher  TEXT NOT NULL,
+            image_blob      BLOB,
+            image_iv        TEXT,
+            image_hash      TEXT,
+            pending_upload  INTEGER NOT NULL DEFAULT 0
           )
         ''');
         await db.execute(
           'CREATE INDEX idx_lesion_patient ON $_table(patient_id, captured_at DESC)',
         );
+        await db.execute(
+          'CREATE INDEX idx_lesion_pending ON $_table(pending_upload) WHERE pending_upload = 1',
+        );
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN image_blob BLOB',
+          );
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN image_iv TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN image_hash TEXT',
+          );
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN pending_upload INTEGER NOT NULL DEFAULT 0',
+          );
+          if (kDebugMode) debugPrint('SQLite migrated to v2 (image blob cols)');
+        }
       },
     );
   }
@@ -80,23 +103,35 @@ class SecureLesionRepository implements LesionRepositoryPort {
   }
 
   @override
-  Future<void> save(LesionAnalysis analysis) async {
+  Future<void> save(LesionAnalysis analysis, {Uint8List? jpegBytes}) async {
     final db = _requireDb();
     final iv = enc.IV.fromSecureRandom(16);
     final json = jsonEncode(analysis.toEncryptedJson());
     final encrypted = _encrypter!.encrypt(json, iv: iv);
 
+    final row = <String, Object?>{
+      'id': analysis.id,
+      'patient_id': analysis.patientId,
+      'top_label': analysis.topLabel.slug,
+      'confidence': analysis.confidence,
+      'captured_at': analysis.capturedAt.millisecondsSinceEpoch,
+      'payload_iv': iv.base64,
+      'payload_cipher': encrypted.base64,
+      'pending_upload': analysis.pendingUpload ? 1 : 0,
+    };
+
+    // Encrypt image bytes separately (binary blob, not base64 in JSON).
+    if (jpegBytes != null && jpegBytes.isNotEmpty) {
+      final imageIv = enc.IV.fromSecureRandom(16);
+      final encryptedImage = _encrypter!.encryptBytes(jpegBytes, iv: imageIv);
+      row['image_blob'] = encryptedImage.bytes;
+      row['image_iv'] = imageIv.base64;
+      row['image_hash'] = analysis.imageHash;
+    }
+
     await db.insert(
       _table,
-      {
-        'id': analysis.id,
-        'patient_id': analysis.patientId,
-        'top_label': analysis.topLabel.slug,
-        'confidence': analysis.confidence,
-        'captured_at': analysis.capturedAt.millisecondsSinceEpoch,
-        'payload_iv': iv.base64,
-        'payload_cipher': encrypted.base64,
-      },
+      row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
@@ -110,15 +145,16 @@ class SecureLesionRepository implements LesionRepositoryPort {
       whereArgs: [patientId],
       orderBy: 'captured_at DESC',
     );
-    return rows.map(_rowToAnalysis).toList();
+    return rows.map((r) => _rowToAnalysis(r, includeImage: false)).toList();
   }
 
   @override
-  Future<LesionAnalysis?> findById(String id) async {
+  Future<LesionAnalysis?> findById(String id,
+      {bool includeImage = false}) async {
     final db = _requireDb();
     final rows = await db.query(_table, where: 'id = ?', whereArgs: [id]);
     if (rows.isEmpty) return null;
-    return _rowToAnalysis(rows.first);
+    return _rowToAnalysis(rows.first, includeImage: includeImage);
   }
 
   @override
@@ -127,10 +163,51 @@ class SecureLesionRepository implements LesionRepositoryPort {
     await db.delete(_table, where: 'id = ?', whereArgs: [id]);
   }
 
-  LesionAnalysis _rowToAnalysis(Map<String, Object?> row) {
+  @override
+  Future<List<LesionAnalysis>> findPendingUpload() async {
+    final db = _requireDb();
+    final rows = await db.query(
+      _table,
+      where: 'pending_upload = 1',
+      orderBy: 'captured_at ASC',
+    );
+    return rows.map((r) => _rowToAnalysis(r, includeImage: false)).toList();
+  }
+
+  @override
+  Future<void> markUploaded(String id) async {
+    final db = _requireDb();
+    await db.update(
+      _table,
+      {'pending_upload': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  LesionAnalysis _rowToAnalysis(Map<String, Object?> row,
+      {required bool includeImage}) {
     final iv = enc.IV.fromBase64(row['payload_iv'] as String);
     final cipher = enc.Encrypted.fromBase64(row['payload_cipher'] as String);
     final json = _encrypter!.decrypt(cipher, iv: iv);
+
+    Uint8List? imageBytes;
+    if (includeImage) {
+      final imageBlob = row['image_blob'];
+      final imageIvStr = row['image_iv'] as String?;
+      if (imageBlob != null && imageIvStr != null) {
+        try {
+          final imgIv = enc.IV.fromBase64(imageIvStr);
+          final encImg = enc.Encrypted(imageBlob as Uint8List);
+          imageBytes = Uint8List.fromList(
+            _encrypter!.decryptBytes(encImg, iv: imgIv),
+          );
+        } catch (e) {
+          if (kDebugMode) debugPrint('Image decrypt failed: $e');
+        }
+      }
+    }
+
     return LesionAnalysis.fromRow(
       id: row['id'] as String,
       patientId: row['patient_id'] as String,
@@ -138,6 +215,8 @@ class SecureLesionRepository implements LesionRepositoryPort {
         row['captured_at'] as int,
       ),
       decrypted: jsonDecode(json) as Map<String, dynamic>,
+      pendingUpload: (row['pending_upload'] as int?) == 1,
+      imageBytes: imageBytes,
     );
   }
 

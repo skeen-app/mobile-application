@@ -3,64 +3,76 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../application/detection_controller.dart';
+import '../../application/providers.dart';
+import '../../application/readiness_evaluator.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/ar_reticle_overlay.dart';
+import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
+import '../widgets/floating_diagnosis_label.dart';
+import '../widgets/readiness_checklist_overlay.dart';
 import '../widgets/scan_capture_button.dart';
-import '../widgets/scan_quality_hint.dart';
 
-/// Live AR-guided mole capture screen (Figma `escaner` 149:125).
-///
-/// Opens the rear camera as soon as it mounts, overlays the skeen reticle,
-/// streams a luminance signal from the camera plugin into [CaptureQuality]
-/// to coach non-expert users on lighting/framing, then exposes a shutter
-/// that hands the resulting [XFile] back to the caller via `context.pop`.
-/// Inference itself is downstream of this screen — capture only.
-class ScanAMoleScreen extends StatefulWidget {
+/// Fallback scan screen for devices without AR/depth sensor support.
+/// Now integrates full inline inference via DetectionController — same
+/// TFLite pipeline as ArScanScreen, but without AR anchor positioning.
+/// The floating diagnosis label centers in the viewport instead.
+class ScanAMoleScreen extends ConsumerStatefulWidget {
   const ScanAMoleScreen({super.key});
 
   @override
-  State<ScanAMoleScreen> createState() => _ScanAMoleScreenState();
+  ConsumerState<ScanAMoleScreen> createState() => _ScanAMoleScreenState();
 }
 
-class _ScanAMoleScreenState extends State<ScanAMoleScreen>
+class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     with WidgetsBindingObserver {
-  final ScanCameraService _service = ScanCameraService();
-  StreamSubscription<double>? _brightnessSub;
+  late final ScanCameraService _camera;
+  late final ReadinessEvaluator _evaluator;
+  StreamSubscription<CaptureReadiness>? _readinessSub;
 
   CaptureQuality _quality = CaptureQuality.initial;
-  bool _isCapturing = false;
+  CaptureReadiness _readiness = CaptureReadiness.initializing;
   bool _showShutterFlash = false;
-  bool _flashOn = false;
-  double _zoom = 1.0;
-  double _maxZoom = 5.0;
   String? _initError;
+
+  // Pinch-to-zoom state
+  double _currentZoom = 1.0;
+  double _maxZoom = 5.0;
+  double _baseZoom = 1.0;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _camera = ref.read(scanCameraServiceProvider);
+    _evaluator = ref.read(readinessEvaluatorProvider);
     _bootstrap();
   }
 
   Future<void> _bootstrap() async {
     try {
-      await _service.initialize();
-      _brightnessSub = _service.brightness.listen((value) {
+      await _camera.initialize();
+      _maxZoom = await _camera.getMaxZoom();
+
+      // Start readiness (no AR distance in fallback — defaults to OK)
+      _evaluator.start();
+
+      _readinessSub = _evaluator.readiness.listen((r) {
         if (!mounted) return;
-        setState(() => _quality = CaptureQuality.fromBrightness(value));
+        setState(() {
+          _readiness = r;
+          _quality = r.lighting;
+        });
+        ref.read(detectionControllerProvider.notifier).updateReadiness(r);
       });
-      final ctl = _service.controller;
-      if (ctl != null) {
-        try {
-          _maxZoom = (await ctl.getMaxZoomLevel()).clamp(1.0, 8.0);
-        } catch (_) {/* keep default */}
-      }
+
       if (mounted) setState(() {});
     } catch (e) {
       if (kDebugMode) debugPrint('Camera init failed: $e');
@@ -68,39 +80,13 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
     }
   }
 
-  Future<void> _toggleFlash() async {
-    final ctl = _service.controller;
-    if (ctl == null) return;
-    final next = !_flashOn;
-    try {
-      await ctl.setFlashMode(next ? FlashMode.torch : FlashMode.off);
-      if (mounted) setState(() => _flashOn = next);
-    } catch (e) {
-      if (kDebugMode) debugPrint('Flash toggle failed: $e');
-    }
-  }
-
-  Future<void> _setZoom(double value) async {
-    final ctl = _service.controller;
-    if (ctl == null) return;
-    final clamped = value.clamp(1.0, _maxZoom);
-    try {
-      await ctl.setZoomLevel(clamped);
-      if (mounted) setState(() => _zoom = clamped);
-    } catch (e) {
-      if (kDebugMode) debugPrint('Zoom failed: $e');
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Camera resources must be released when the app backgrounds, otherwise
-    // the OS will tear them down for us and crash the next resume.
-    final controller = _service.controller;
+    final controller = _camera.controller;
     if (controller == null) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      _service.dispose();
+      _camera.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _bootstrap();
     }
@@ -109,54 +95,85 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _brightnessSub?.cancel();
-    _service.dispose();
+    _readinessSub?.cancel();
+    _camera.dispose();
     super.dispose();
   }
 
   Future<void> _handleCapture() async {
-    if (_isCapturing) return;
-    setState(() {
-      _isCapturing = true;
-      _showShutterFlash = true;
-    });
+    final detection = ref.read(detectionControllerProvider);
+    final controller = ref.read(detectionControllerProvider.notifier);
 
-    // Brief white flash to mimic a shutter — purely aesthetic feedback.
+    if (detection.phase == DetectionPhase.presented) {
+      _navigateToTriage(detection);
+      return;
+    }
+
+    setState(() => _showShutterFlash = true);
     Future.delayed(const Duration(milliseconds: 140), () {
       if (mounted) setState(() => _showShutterFlash = false);
     });
 
-    final file = await _service.capture();
-    if (!mounted) return;
+    await _camera.lockExposure();
+    final bytes = await _camera.captureStandardized();
+    await _camera.unlockExposure();
 
-    setState(() => _isCapturing = false);
-
-    if (file == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Capture failed — please try again')),
-      );
+    if (bytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Capture failed — please try again')),
+        );
+      }
       return;
     }
 
-    // Hand the captured file back to the caller. Downstream screens (upload
-    // / inference) decide what to do with it; this screen's job ends here.
-    if (context.canPop()) {
-      context.pop(file.path);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Photo saved: ${file.name}')),
-      );
+    // Run inference via the detection controller
+    if (!mounted) return;
+    final viewSize = Size(
+      MediaQuery.of(context).size.width - 40,
+      MediaQuery.of(context).size.height * 0.55,
+    );
+    await controller.captureWithBytes(bytes: bytes, previewSize: viewSize);
+  }
+
+  Future<void> _navigateToTriage(DetectionState state) async {
+    if (state.savedAnalysisId == null || state.capturedImageBytes == null) {
+      return;
+    }
+    final region = await BodyRegionPicker.show(context);
+    if (!mounted) return;
+    context.pushNamed(
+      'triage-result',
+      extra: {
+        'analysisId': state.savedAnalysisId!,
+        'capturedImageBytes': state.capturedImageBytes!,
+        'bodyRegion': region,
+      },
+    );
+  }
+
+  void _onScaleStart(ScaleStartDetails details) {
+    _baseZoom = _currentZoom;
+  }
+
+  void _onScaleUpdate(ScaleUpdateDetails details) {
+    final newZoom = (_baseZoom * details.scale).clamp(1.0, _maxZoom);
+    if ((newZoom - _currentZoom).abs() > 0.05) {
+      setState(() => _currentZoom = newZoom);
+      _camera.setZoom(newZoom);
     }
   }
 
-  Future<void> _handleTapToFocus(TapDownDetails details, Size previewSize) {
-    final dx = (details.localPosition.dx / previewSize.width).clamp(0.0, 1.0);
-    final dy = (details.localPosition.dy / previewSize.height).clamp(0.0, 1.0);
-    return _service.focusAt(Offset(dx, dy));
+  Future<void> _toggleFlash() async {
+    final state = ref.read(detectionControllerProvider);
+    final next = !state.flashOn;
+    await _camera.setFlash(next);
+    await ref.read(detectionControllerProvider.notifier).setFlash(next);
   }
 
   @override
   Widget build(BuildContext context) {
+    final detection = ref.watch(detectionControllerProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -172,11 +189,11 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: _buildPreviewSurface(),
+                  child: _buildPreviewSurface(detection),
                 ),
               ),
             ),
-            _buildBottomControls(),
+            _buildBottomControls(detection),
             const SizedBox(height: 24),
           ],
         ),
@@ -184,7 +201,7 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
     );
   }
 
-  Widget _buildPreviewSurface() {
+  Widget _buildPreviewSurface(DetectionState detection) {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.indigo,
@@ -193,64 +210,132 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final size = Size(constraints.maxWidth, constraints.maxHeight);
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              if (_initError != null)
-                _CameraUnavailable(message: _initError!)
-              else if (_service.isReady)
-                GestureDetector(
-                  onTapDown: (d) => _handleTapToFocus(d, size),
-                  child: _FittedPreview(controller: _service.controller!),
-                )
-              else
-                const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.violetaClaro,
+          return GestureDetector(
+            onScaleStart: _onScaleStart,
+            onScaleUpdate: _onScaleUpdate,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_initError != null)
+                  _CameraUnavailable(message: _initError!)
+                else if (_camera.isReady)
+                  _FittedPreview(controller: _camera.controller!)
+                else
+                  const Center(
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        AppColors.violetaClaro,
+                      ),
                     ),
                   ),
+                ArReticleOverlay(quality: _quality),
+
+                // Floating diagnosis label (centered, no AR anchor)
+                if (detection.result != null)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 80),
+                      child: FloatingDiagnosisLabel(
+                        result: detection.result!,
+                        onTap: () => _navigateToTriage(detection),
+                      ),
+                    ),
+                  ),
+
+                // Readiness checklist
+                if (detection.phase == DetectionPhase.ready ||
+                    detection.phase == DetectionPhase.initializing)
+                  ReadinessChecklistOverlay(readiness: _readiness),
+
+                // Flash toggle
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: CameraFlashButton(
+                    isOn: detection.flashOn,
+                    onTap: _toggleFlash,
+                  ),
                 ),
-              ArReticleOverlay(quality: _quality),
-              Positioned(
-                top: 16,
-                right: 16,
-                child: CameraFlashButton(
-                  isOn: _flashOn,
-                  onTap: _toggleFlash,
+
+                // Zoom indicator
+                if (_currentZoom > 1.05)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.background.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_currentZoom.toStringAsFixed(1)}×',
+                        style: const TextStyle(
+                          fontFamily: 'Poppins',
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                          color: AppColors.violetaClaro,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                // Shutter flash
+                AnimatedOpacity(
+                  opacity: _showShutterFlash ? 1 : 0,
+                  duration: const Duration(milliseconds: 120),
+                  child: Container(color: Colors.white),
                 ),
-              ),
-              Positioned(
-                top: 70,
-                right: 16,
-                bottom: 16,
-                child: CameraZoomSlider(
-                  value: _zoom,
-                  min: 1.0,
-                  max: _maxZoom,
-                  onChanged: _setZoom,
-                ),
-              ),
-              AnimatedOpacity(
-                opacity: _showShutterFlash ? 1 : 0,
-                duration: const Duration(milliseconds: 120),
-                child: Container(color: Colors.white),
-              ),
-            ],
+
+                // Analyzing overlay
+                if (detection.phase == DetectionPhase.analyzing ||
+                    detection.phase == DetectionPhase.standardizing)
+                  Container(
+                    color: Colors.black.withValues(alpha: 0.35),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.violetaClaro,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            detection.phase == DetectionPhase.standardizing
+                                ? 'Standardizing image…'
+                                : 'Running on-device analysis…',
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              color: AppColors.violetaClaro,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildBottomControls() {
+  Widget _buildBottomControls(DetectionState detection) {
+    final isPresented = detection.phase == DetectionPhase.presented;
+    final isBusy = detection.phase == DetectionPhase.capturing ||
+        detection.phase == DetectionPhase.analyzing ||
+        detection.phase == DetectionPhase.standardizing;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          ScanQualityHint(quality: _quality),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -261,13 +346,22 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
               ),
               ScanCaptureButton(
                 quality: _quality,
-                isCapturing: _isCapturing,
+                isCapturing: isBusy,
                 onPressed: _handleCapture,
               ),
               _SecondaryAction(
-                icon: Icons.tune_rounded,
-                label: 'Calibrate',
-                onTap: () => context.pushNamed('calibrate'),
+                icon: isPresented ? Icons.refresh : Icons.tune_rounded,
+                label: isPresented ? 'Scan again' : 'Calibrate',
+                onTap: () async {
+                  if (isPresented) {
+                    await ref
+                        .read(detectionControllerProvider.notifier)
+                        .reset();
+                    await _camera.unlockExposure();
+                  } else {
+                    context.pushNamed('calibrate');
+                  }
+                },
               ),
             ],
           ),
@@ -285,8 +379,6 @@ class _FittedPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final preview = controller.value.previewSize;
     if (preview == null) return CameraPreview(controller);
-    // The plugin reports preview size in landscape orientation, so swap
-    // axes to derive the portrait aspect ratio used by the viewfinder.
     final aspect = preview.height / preview.width;
     return FittedBox(
       fit: BoxFit.cover,

@@ -23,6 +23,9 @@ class LesionAnalysis {
     required this.capturedAt,
     this.bodyRegion,
     this.distanceCm,
+    this.imageBytes,
+    this.pendingUpload = false,
+    this.imageHash,
   });
 
   final String id;
@@ -32,9 +35,21 @@ class LesionAnalysis {
   final BoundingBox boundingBox;
   final DateTime capturedAt;
 
-  /// Optional body region tag (Head / Chest / Legs / …). Null until the
-  /// user assigns one in the post-capture flow.
+  /// Optional body region tag (Head / Chest / Legs / …). Selected by the
+  /// user in the post-capture body-region picker.
   final String? bodyRegion;
+
+  /// The raw JPEG bytes of the captured image. Stored AES-256-CBC encrypted
+  /// in SQLite for future cloud upload / re-training. Null when loaded
+  /// without image data (e.g. history list view that only needs metadata).
+  final Uint8List? imageBytes;
+
+  /// Whether this record is pending upload to the cloud. Defaults to false;
+  /// set to true only when the user opts-in for data sharing.
+  final bool pendingUpload;
+
+  /// SHA-256 hex digest of the raw JPEG for dedup + integrity verification.
+  final String? imageHash;
 
   /// Capture distance at the moment of the shot (cm). Useful both as
   /// quality metadata and for future scale-aware features.
@@ -59,6 +74,7 @@ class LesionAnalysis {
         },
         'bodyRegion': bodyRegion,
         'distanceCm': distanceCm,
+        'imageHash': imageHash,
       };
 
   static LesionAnalysis fromRow({
@@ -66,6 +82,8 @@ class LesionAnalysis {
     required String patientId,
     required DateTime capturedAt,
     required Map<String, dynamic> decrypted,
+    bool pendingUpload = false,
+    Uint8List? imageBytes,
   }) {
     final bbox = decrypted['bbox'] as Map<String, dynamic>;
     return LesionAnalysis(
@@ -90,6 +108,9 @@ class LesionAnalysis {
       capturedAt: capturedAt,
       bodyRegion: decrypted['bodyRegion'] as String?,
       distanceCm: (decrypted['distanceCm'] as num?)?.toDouble(),
+      imageBytes: imageBytes,
+      pendingUpload: pendingUpload,
+      imageHash: decrypted['imageHash'] as String?,
     );
   }
 }
