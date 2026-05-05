@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
@@ -6,6 +8,12 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 
 import '../domain/inference_result.dart';
 import '../domain/ports.dart';
+
+class PreprocessResult {
+  PreprocessResult({required this.tensor, this.centroid});
+  final List tensor;
+  final Offset? centroid;
+}
 
 /// Real implementation of [InferenceServicePort] backed by `tflite_flutter`
 /// running on an [IsolateInterpreter]. Inference is offloaded to a worker
@@ -45,16 +53,15 @@ class TfliteInferenceService implements InferenceServicePort {
 
     final sw = Stopwatch()..start();
 
-    // Decode + resize off the main isolate too — `image` is pure Dart and
-    // can be heavy on a 12 MP capture.
-    final input = await compute(_preprocess, jpegBytes);
+    // Decode + resize + centroid calculation off the main isolate
+    final preprocessResult = await compute(_preprocess, jpegBytes);
     final preprocessMs = sw.elapsedMilliseconds;
 
     // Allocate the output buffer in the shape the interpreter expects.
     final output = List.filled(_numClasses, 0.0)
         .reshape<double>([1, _numClasses]);
 
-    await isolate.run(input, output);
+    await isolate.run(preprocessResult.tensor, output);
     final totalMs = sw.elapsedMilliseconds;
     sw.stop();
 
@@ -66,9 +73,11 @@ class TfliteInferenceService implements InferenceServicePort {
     }
 
     final scores = (output[0] as List).cast<double>();
-    return InferenceResult(scores: scores);
+    return InferenceResult(
+      scores: scores,
+      lesionCentroid: preprocessResult.centroid,
+    );
   }
-
 
   @override
   Future<void> dispose() async {
@@ -79,14 +88,83 @@ class TfliteInferenceService implements InferenceServicePort {
   }
 }
 
-/// Top-level so it can run in a worker isolate via `compute`. Decodes the
-/// JPEG, bilinearly resizes to 224×224, and produces the
-/// `[1, 224, 224, 3]` Float32 tensor the model expects (range 0–255).
-List _preprocess(Uint8List jpegBytes) {
+/// Top-level so it can run in a worker isolate via `compute`.
+/// Performs 3 tasks:
+/// 1. Decodes JPEG.
+/// 2. Extracts a 300x300 ROI (Target Ring area), applies inverse thresholding, 
+///    and calculates the Center of Mass (centroid) for AR anchoring.
+/// 3. Resizes to 224x224 and produces the Float32List tensor for TFLite.
+PreprocessResult _preprocess(Uint8List jpegBytes) {
   final decoded = img.decodeImage(jpegBytes);
   if (decoded == null) {
     throw const FormatException('Could not decode capture as image');
   }
+
+  // ── 1. Fast Centroid Calculation (Contrast-based) ─────────────
+  Offset? centroid;
+  final w = decoded.width;
+  final h = decoded.height;
+
+  // We want a 300x300 crop from the center
+  final cropW = min(300, w);
+  final cropH = min(300, h);
+  final cropStartX = (w - cropW) ~/ 2;
+  final cropStartY = (h - cropH) ~/ 2;
+
+  final gray = img.grayscale(decoded);
+
+  // Pass 1: find mean and min luminance in the crop region
+  double sumLum = 0;
+  int countLum = 0;
+  int minLum = 255;
+  const step = 2; // sample every 2nd pixel for speed
+
+  for (var y = cropStartY; y < cropStartY + cropH; y += step) {
+    for (var x = cropStartX; x < cropStartX + cropW; x += step) {
+      final lum = gray.getPixel(x, y).luminance.round();
+      sumLum += lum;
+      countLum++;
+      if (lum < minLum) minLum = lum;
+    }
+  }
+
+  if (countLum > 0) {
+    final meanLum = sumLum / countLum;
+    // Threshold: pixels darker than (mean + darkest) / 2 are "lesion"
+    final threshold = ((meanLum + minLum) / 2).round();
+
+    // Pass 2: compute weighted centroid of dark pixels
+    double cx = 0, cy = 0;
+    int darkCount = 0;
+
+    for (var y = cropStartY; y < cropStartY + cropH; y += step) {
+      for (var x = cropStartX; x < cropStartX + cropW; x += step) {
+        final lum = gray.getPixel(x, y).luminance.round();
+        if (lum <= threshold) {
+          // Inverse threshold weight: darker = more weight
+          final weight = max(1, threshold - lum);
+          cx += x * weight;
+          cy += y * weight;
+          darkCount += weight;
+        }
+      }
+    }
+
+    if (darkCount >= 10) {
+      final absoluteCx = cx / darkCount;
+      final absoluteCy = cy / darkCount;
+      // Normalize relative to full original image (0.0 to 1.0)
+      final normX = absoluteCx / w;
+      final normY = absoluteCy / h;
+
+      // Only accept if it's within the ROI boundaries (sanity check)
+      if (normX >= 0.1 && normX <= 0.9 && normY >= 0.1 && normY <= 0.9) {
+        centroid = Offset(normX, normY);
+      }
+    }
+  }
+
+  // ── 2. Resize and Tensor Prep ─────────────────────────────────
   final resized = img.copyResize(
     decoded,
     width: 224,
@@ -104,5 +182,9 @@ List _preprocess(Uint8List jpegBytes) {
       input[i++] = p.b.toDouble();
     }
   }
-  return input.reshape([1, 224, 224, 3]);
+  
+  return PreprocessResult(
+    tensor: input.reshape([1, 224, 224, 3]),
+    centroid: centroid,
+  );
 }

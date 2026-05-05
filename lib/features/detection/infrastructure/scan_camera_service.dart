@@ -51,7 +51,6 @@ class ScanCameraService implements ScanCameraServicePort {
       back,
       ResolutionPreset.high,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.yuv420,
     );
     await controller.initialize();
     await controller.setFocusMode(FocusMode.auto);
@@ -82,46 +81,73 @@ class ScanCameraService implements ScanCameraServicePort {
     final bytes = plane.bytes;
     if (bytes.isEmpty) return;
 
-    // ── Brightness: sparse subsample ~1024 samples ──────────────────
-    const samples = 1024;
-    final step = bytes.length ~/ samples;
-    if (step <= 0) return;
-    var sum = 0;
-    var count = 0;
-    for (var i = 0; i < bytes.length; i += step) {
-      sum += bytes[i];
-      count++;
+    final isBgra = image.format.group == ImageFormatGroup.bgra8888;
+    final pixelStride = isBgra ? 4 : 1;
+    final rowStride = plane.bytesPerRow;
+    // For BGRA, the Green channel is at offset 1 (B=0, G=1, R=2, A=3).
+    final colorOffset = isBgra ? 1 : 0;
+
+    final width = image.width;
+    final height = image.height;
+    if (width < 3 || height < 3) return;
+
+    // ── Brightness: sparse subsample ──────────────────
+    final stepX = width ~/ 32;
+    final stepY = height ~/ 32;
+    
+    var sumLum = 0;
+    var countLum = 0;
+    for (var y = 0; y < height; y += stepY) {
+      final yOffset = y * rowStride;
+      for (var x = 0; x < width; x += stepX) {
+        final index = yOffset + x * pixelStride + colorOffset;
+        if (index < bytes.length) {
+          sumLum += bytes[index];
+          countLum++;
+        }
+      }
     }
-    final meanBrightness = sum / count;
-    if (!_brightnessController.isClosed) {
-      _brightnessController.add(meanBrightness);
+    
+    if (countLum > 0) {
+      final meanBrightness = sumLum / countLum;
+      if (!_brightnessController.isClosed) {
+        _brightnessController.add(meanBrightness);
+      }
     }
 
     // ── Sharpness: Laplacian variance on sparse grid ────────────────
-    // Use a 3×3 Laplacian kernel approximation on a sparse grid of the
-    // Y plane. The variance of the Laplacian output correlates with focus
-    // sharpness — higher variance = sharper image.
-    final width = plane.bytesPerRow;
-    final height = bytes.length ~/ width;
-    if (width < 3 || height < 3) return;
-
     const gridStep = 8; // sample every 8th pixel for speed
     var lapSum = 0.0;
     var lapSumSq = 0.0;
     var lapCount = 0;
-    for (var y = 1; y < height - 1; y += gridStep) {
-      for (var x = 1; x < width - 1; x += gridStep) {
-        final center = bytes[y * width + x];
-        final top = bytes[(y - 1) * width + x];
-        final bottom = bytes[(y + 1) * width + x];
-        final left = bytes[y * width + (x - 1)];
-        final right = bytes[y * width + (x + 1)];
+    
+    // Pre-calculate strides for neighboring pixels
+    final topOffset = -rowStride;
+    final bottomOffset = rowStride;
+    final leftOffset = -pixelStride;
+    final rightOffset = pixelStride;
+    
+    for (var y = gridStep; y < height - gridStep; y += gridStep) {
+      final yBase = y * rowStride;
+      for (var x = gridStep; x < width - gridStep; x += gridStep) {
+        final index = yBase + x * pixelStride + colorOffset;
+        
+        // Fast bounds check
+        if (index + bottomOffset >= bytes.length) break;
+        
+        final center = bytes[index];
+        final top = bytes[index + topOffset];
+        final bottom = bytes[index + bottomOffset];
+        final left = bytes[index + leftOffset];
+        final right = bytes[index + rightOffset];
+        
         final laplacian = (4 * center - top - bottom - left - right).abs();
         lapSum += laplacian;
         lapSumSq += laplacian * laplacian;
         lapCount++;
       }
     }
+    
     if (lapCount > 0) {
       final mean = lapSum / lapCount;
       final variance = (lapSumSq / lapCount) - (mean * mean);
@@ -262,7 +288,15 @@ class ScanCameraService implements ScanCameraServicePort {
     try {
       await controller.setFlashMode(on ? FlashMode.torch : FlashMode.off);
     } catch (e) {
-      if (kDebugMode) debugPrint('Flash toggle failed: $e');
+      if (kDebugMode) debugPrint('Flash toggle (torch) failed: $e');
+      if (on) {
+        // Fallback for Android devices that throw when setting torch during active streams
+        try {
+          await controller.setFlashMode(FlashMode.always);
+        } catch (e2) {
+          if (kDebugMode) debugPrint('Flash toggle fallback (always) failed: $e2');
+        }
+      }
     }
   }
 

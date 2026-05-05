@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -69,22 +70,43 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   Future<void> _bootstrap() async {
     try {
-      await _camera.initialize();
-      _maxZoom = await _camera.getMaxZoom();
+      if (defaultTargetPlatform != TargetPlatform.android) {
+        await _camera.initialize();
+        _maxZoom = await _camera.getMaxZoom();
+      } else {
+        _maxZoom = 1.0;
+      }
 
       // Start readiness evaluation with AR distance stream
       final arSession = ref.read(arSessionProvider);
-      _evaluator.start(distanceStream: arSession.distance);
-
-      _readinessSub = _evaluator.readiness.listen((r) {
-        if (!mounted) return;
-        setState(() {
-          _readiness = r;
-          _quality = r.lighting;
+      
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        // Fast-track readiness on Android since native ARCore handles camera
+        Future.microtask(() {
+          if (!mounted) return;
+          setState(() {
+            _readiness = CaptureReadiness(
+              lighting: CaptureQuality.fromBrightness(200),
+              focus: true,
+              distance: true,
+              isStable: true,
+            );
+            _quality = _readiness.lighting;
+          });
+          ref.read(detectionControllerProvider.notifier).updateReadiness(_readiness);
         });
-        // Sync to detection controller state
-        ref.read(detectionControllerProvider.notifier).updateReadiness(r);
-      });
+      } else {
+        _evaluator.start(distanceStream: arSession.distance);
+        _readinessSub = _evaluator.readiness.listen((r) {
+          if (!mounted) return;
+          setState(() {
+            _readiness = r;
+            _quality = r.lighting;
+          });
+          // Sync to detection controller state
+          ref.read(detectionControllerProvider.notifier).updateReadiness(r);
+        });
+      }
 
       // Re-project the world anchor onto screen coords every 33 ms (~30 fps)
       _anchorProjector = Timer.periodic(
@@ -126,6 +148,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (defaultTargetPlatform == TargetPlatform.android) return;
     final controller = _camera.controller;
     if (controller == null) return;
     if (state == AppLifecycleState.inactive ||
@@ -248,6 +271,11 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
               children: [
                 if (_initError != null)
                   _CameraUnavailable(message: _initError!)
+                else if (defaultTargetPlatform == TargetPlatform.android)
+                  const AndroidView(
+                    viewType: 'skeen.detection/ar_view',
+                    creationParamsCodec: StandardMessageCodec(),
+                  )
                 else if (_camera.isReady)
                   _FittedPreview(controller: _camera.controller!)
                 else

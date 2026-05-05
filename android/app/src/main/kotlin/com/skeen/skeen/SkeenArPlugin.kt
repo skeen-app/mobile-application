@@ -16,23 +16,14 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.sqrt
 
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
+import java.io.ByteArrayOutputStream
+
 /**
  * Bridges the Detection bounded context's ArSessionPort to ARCore.
- *
- * Surfaces three capabilities to Dart:
- *   1. probeCapabilities — reports AR + Depth API support
- *   2. EventChannel("…/distance") — streams cm-to-skin readings (Depth API
- *      sampled at the screen-center pixel, throttled to ~10 Hz)
- *   3. hitTest / projectToScreen / captureFrame / setFlash / setZoom
- *
- * Depth-less devices: probeCapabilities returns hasDepthSensor=false; the
- * router screen mounts the plain camera fallback instead of the AR view.
- *
- * NOTE: this plugin is method-channel only — it does not own a PlatformView.
- * The CameraPreview surface is managed by the existing `camera` plugin so
- * the AR overlay can sit on top of the same preview the fallback uses.
- * Hit-tests and depth come from a parallel ARCore Session that consumes
- * frames internally without rendering its own surface.
+ * Modified to support a native GLSurfaceView PlatformView.
  */
 class SkeenArPlugin(private val context: Context) :
     MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
@@ -45,6 +36,11 @@ class SkeenArPlugin(private val context: Context) :
     private var samplingRunnable: Runnable? = null
 
     var activity: Activity? = null
+
+    // For GLSurfaceView integration
+    private var displayWidth = 0
+    private var displayHeight = 0
+    private var displayRotation = 0
 
     override fun onMethodCall(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
         when (call.method) {
@@ -66,12 +62,14 @@ class SkeenArPlugin(private val context: Context) :
                 val map = call.arguments as? Map<*, *>
                 result.success(projectToScreen(map))
             }
-            "captureFrame" -> result.success(captureFrame())
-            "setFlash" -> {
-                // Camera plugin owns the device camera in this build, so
-                // flash toggling is handled Dart-side via CameraController.
-                result.success(null)
+            "captureFrame" -> {
+                // Return in background thread to not block UI
+                Thread {
+                    val bytes = captureFrame()
+                    handler.post { result.success(bytes) }
+                }.start()
             }
+            "setFlash" -> result.success(null)
             "setZoom" -> result.success(null)
             else -> result.notImplemented()
         }
@@ -97,6 +95,9 @@ class SkeenArPlugin(private val context: Context) :
         )
     }
 
+    private var pendingTexId: Int? = null
+    private var isStarted = false
+
     private fun start() {
         if (session != null) return
         try {
@@ -109,12 +110,16 @@ class SkeenArPlugin(private val context: Context) :
                 focusMode = Config.FocusMode.AUTO
             }
             s.configure(config)
-            s.resume()
             session = s
+            isStarted = true
+
+            pendingTexId?.let {
+                s.setCameraTextureName(it)
+                s.resume()
+            }
             startDepthSampling()
         } catch (e: Throwable) {
-            // Surface as null distance reading; Dart side already handles
-            // CaptureDistance.unknown() as a graceful state.
+            // Error handling
         }
     }
 
@@ -126,11 +131,48 @@ class SkeenArPlugin(private val context: Context) :
         session = null
     }
 
-    /**
-     * Polls the depth image at the screen-center pixel ~10× per second.
-     * The Depth API returns millimeters in the 16-bit channel; we convert
-     * to centimeters before pushing to Dart.
-     */
+    fun setCameraTextureName(texId: Int) {
+        pendingTexId = texId
+        if (isStarted) {
+            val s = session
+            s?.setCameraTextureName(texId)
+            s?.resume()
+        }
+    }
+
+    fun setDisplayGeometry(width: Int, height: Int) {
+        displayWidth = width
+        displayHeight = height
+        displayRotation = activity?.windowManager?.defaultDisplay?.rotation ?: 0
+        session?.setDisplayGeometry(displayRotation, width, height)
+    }
+
+    fun updateSession(): Frame? {
+        return try {
+            session?.update()
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
+    fun getTransformedTexCoords(coords: FloatArray): FloatArray {
+        val frame = try { session?.update() } catch (e: Throwable) { null }
+        if (frame == null || !frame.hasDisplayGeometryChanged()) {
+            return coords
+        }
+        val buffer = ByteBuffer.allocateDirect(coords.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        buffer.put(coords)
+        buffer.position(0)
+        
+        val transformed = ByteBuffer.allocateDirect(coords.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
+        frame.transformDisplayUvCoords(buffer, transformed)
+        
+        val out = FloatArray(coords.size)
+        transformed.position(0)
+        transformed.get(out)
+        return out
+    }
+
     private fun startDepthSampling() {
         if (!depthSupported) return
         val tick = object : Runnable {
@@ -167,18 +209,12 @@ class SkeenArPlugin(private val context: Context) :
         handler.post(tick)
     }
 
-    /**
-     * Hit-test against detected planes at the given normalized screen point.
-     * Returns the world pose of the first plane hit, or null.
-     */
     private fun hitTest(nx: Float, ny: Float): Map<String, Any>? {
         val s = session ?: return null
         return try {
             val frame = s.update()
-            // ARCore expects pixel coords in the active display dimensions;
-            // approximate from normalized coords using the depth image size.
-            val w = 1080f
-            val h = 1920f
+            val w = displayWidth.toFloat().takeIf { it > 0 } ?: 1080f
+            val h = displayHeight.toFloat().takeIf { it > 0 } ?: 1920f
             val results = frame.hitTest(nx * w, ny * h)
             val hit = results.firstOrNull() ?: return null
             poseToMap(hit.hitPose, "hit-${System.nanoTime()}")
@@ -219,10 +255,37 @@ class SkeenArPlugin(private val context: Context) :
     }
 
     private fun captureFrame(): ByteArray? {
-        // Frame capture for inference is owned by the Dart `camera` plugin
-        // (it already runs the preview surface). Returning null here lets
-        // the controller fall through to that path.
-        return null
+        val s = session ?: return null
+        return try {
+            val frame = s.update()
+            val image = frame.acquireCameraImage()
+            
+            // Convert YUV_420_888 to NV21 for JPEG compression
+            val yBuffer = image.planes[0].buffer
+            val uBuffer = image.planes[1].buffer
+            val vBuffer = image.planes[2].buffer
+
+            val ySize = yBuffer.remaining()
+            val uSize = uBuffer.remaining()
+            val vSize = vBuffer.remaining()
+
+            val nv21 = ByteArray(ySize + uSize + vSize)
+
+            yBuffer.get(nv21, 0, ySize)
+            vBuffer.get(nv21, ySize, vSize)
+            uBuffer.get(nv21, ySize + vSize, uSize)
+
+            val width = image.width
+            val height = image.height
+            image.close()
+
+            val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+            val out = ByteArrayOutputStream()
+            yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
+            out.toByteArray()
+        } catch (e: Throwable) {
+            null
+        }
     }
 
     private fun poseToMap(pose: Pose, id: String): Map<String, Any> {

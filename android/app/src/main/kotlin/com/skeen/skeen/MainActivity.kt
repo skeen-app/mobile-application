@@ -11,6 +11,13 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
 
         val plugin = SkeenArPlugin(applicationContext).also { it.activity = this }
+        
+        // Register the PlatformView for AR
+        flutterEngine.platformViewsController.registry.registerViewFactory(
+            "skeen.detection/ar_view",
+            ArCoreViewFactory(plugin)
+        )
+
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             "skeen.detection/ar"

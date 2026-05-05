@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 
 import 'class_label.dart';
@@ -6,8 +8,10 @@ import 'class_label.dart';
 /// no Flutter or platform deps.
 @immutable
 class InferenceResult {
-  InferenceResult({required this.scores})
-      : assert(scores.length == ClassLabel.values.length,
+  InferenceResult({
+    required this.scores,
+    this.lesionCentroid,
+  })  : assert(scores.length == ClassLabel.values.length,
             'Model must emit one score per ClassLabel'),
         topLabel = ClassLabel.fromIndex(_argmaxIndex(scores)),
         confidence = scores.reduce((a, b) => a > b ? a : b);
@@ -16,6 +20,9 @@ class InferenceResult {
   final List<double> scores;
   final ClassLabel topLabel;
   final double confidence;
+  
+  /// The center of mass calculated via contrast thresholding (optional).
+  final Offset? lesionCentroid;
 
   /// Risk bucket for the AR label palette / history row. The rule combines
   /// class identity (always wins for malignant) with confidence:

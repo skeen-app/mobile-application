@@ -224,11 +224,12 @@ class DetectionController extends StateNotifier<DetectionState> {
       // the lesion in the target ring by UX design, so the initial
       // raycast origin is viewport center (0.5, 0.5).
       //
-      // Optional refinement: find the centroid of the darkest blob in
-      // the captured image and use that as the raycast origin instead.
-      // This runs in an isolate to avoid blocking the AR render thread.
+      // Optional refinement: the InferenceService extracts a 300x300 ROI,
+      // finds the centroid of the darkest blob, and returns it as [lesionCentroid].
+      final interestPoint = result.lesionCentroid ?? const Offset(0.5, 0.5);
+      
       final anchor = await _translator.anchorAtCenterOfInterest(
-        capturedBytes: bytes,
+        interestPoint: interestPoint,
       );
 
       if (kDebugMode && anchor != null) {
