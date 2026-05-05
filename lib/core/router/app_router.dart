@@ -17,7 +17,7 @@ import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
 import '../../features/auth/presentation/screens/terms_screen.dart';
 import '../../features/detection/presentation/screens/calibrate_screen.dart';
-import '../../features/detection/presentation/screens/scan_a_mole_screen.dart';
+import '../../features/detection/presentation/screens/scan_router_screen.dart';
 import '../../features/detection/presentation/screens/upload_photo_screen.dart';
 import '../../features/experts/presentation/screens/experts_screen.dart';
 import '../../features/patient/presentation/screens/body_map_screen.dart';
@@ -36,6 +36,7 @@ const _unauthenticatedRoutes = <String>{
   '/forgot-password',
   '/forgot-password/success',
   '/onboarding/permissions',
+  '/onboarding/calibrate',
   '/onboarding/terms',
 };
 
@@ -95,6 +96,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PermissionsScreen(),
       ),
       GoRoute(
+        path: '/onboarding/calibrate',
+        name: 'onboarding-calibrate',
+        builder: (context, state) => const CalibrateScreen(),
+      ),
+      GoRoute(
         path: '/onboarding/terms',
         name: 'onboarding-terms',
         builder: (context, state) => const TermsScreen(),
@@ -141,11 +147,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const HistoryScreen(),
       ),
 
-      // Detection context (entered from home / center FAB)
+      // Detection context (entered from home / center FAB). The router
+      // screen probes ARKit/ARCore + depth and mounts ArScanScreen when
+      // available, falling back to ScanAMoleScreen otherwise.
       GoRoute(
         path: '/scan',
         name: 'scan-a-mole',
-        builder: (context, state) => const ScanAMoleScreen(),
+        builder: (context, state) => const ScanRouterScreen(),
       ),
       GoRoute(
         path: '/upload',

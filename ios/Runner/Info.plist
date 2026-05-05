@@ -8,6 +8,10 @@
 	<string>Skeen uses your location to show the local UV index and recommend the right SPF for your skin.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Skeen uses the camera to capture clinical-quality photos of your skin lesions for on-device AI analysis.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Skeen reads photos from your library so you can analyze existing lesion images alongside live captures.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Skeen saves analyzed lesion photos to your library so you can keep a personal record.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>

@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_button.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
 import '../../../../core/widgets/skeen_step_indicator.dart';
 
+/// Step 1 of the post-registration onboarding funnel.
+///
+/// All switches start OFF. Toggling a switch ON triggers the corresponding
+/// OS permission prompt synchronously — that is the whole point of this
+/// screen. The visual switch state mirrors the *granted* status reported
+/// by the platform: deny the prompt and the switch snaps back off.
 class PermissionsScreen extends StatefulWidget {
   const PermissionsScreen({super.key});
 
@@ -15,9 +22,145 @@ class PermissionsScreen extends StatefulWidget {
 }
 
 class _PermissionsScreenState extends State<PermissionsScreen> {
-  bool _camera = true;
+  bool _camera = false;
   bool _gallery = false;
-  bool _notifications = true;
+  bool _notifications = false;
+
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrateFromOs();
+  }
+
+  /// Reflect any permissions the user has already accepted (e.g. the camera
+  /// prompt fired during registration's profile-photo flow). Without this
+  /// the switches would lie about the actual OS state.
+  Future<void> _hydrateFromOs() async {
+    final results = await Future.wait([
+      Permission.camera.status,
+      _galleryPermission().status,
+      Permission.notification.status,
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _camera = results[0].isGranted;
+      _gallery = results[1].isGranted;
+      _notifications = results[2].isGranted;
+    });
+  }
+
+  /// `Permission.photos` covers iOS and Android 13+ (READ_MEDIA_IMAGES).
+  /// On older Android the plugin transparently maps to legacy storage.
+  Permission _galleryPermission() => Permission.photos;
+
+  Future<void> _toggle({
+    required bool currentValue,
+    required Permission permission,
+    required String permissionLabel,
+    required void Function(bool) apply,
+  }) async {
+    if (_busy) return;
+
+    // Switch OFF: apps can't programmatically revoke permissions, so we
+    // bounce the user to system settings instead of silently lying.
+    if (currentValue) {
+      final goToSettings = await _confirmRevoke(permissionLabel);
+      if (goToSettings == true) {
+        await openAppSettings();
+        await _hydrateFromOs();
+      }
+      return;
+    }
+
+    setState(() => _busy = true);
+    final status = await permission.request();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      apply(status.isGranted);
+    });
+
+    if (status.isPermanentlyDenied) {
+      await _showPermanentlyDeniedDialog(permissionLabel);
+    }
+  }
+
+  Future<bool?> _confirmRevoke(String label) {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.indigo,
+        title: Text(
+          'Revoke $label access?',
+          style: const TextStyle(
+            color: AppColors.violetaClaro,
+            fontFamily: 'Poppins',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: Text(
+          'Permissions can only be revoked from system settings. Open them now?',
+          style: const TextStyle(
+            color: AppColors.hintText,
+            fontFamily: 'Poppins',
+            fontSize: 13,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Open settings'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPermanentlyDeniedDialog(String label) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.indigo,
+        title: Text(
+          '$label permission blocked',
+          style: const TextStyle(
+            color: AppColors.violetaClaro,
+            fontFamily: 'Poppins',
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        content: const Text(
+          'You previously denied this permission. Enable it from system settings to continue.',
+          style: TextStyle(
+            color: AppColors.hintText,
+            fontFamily: 'Poppins',
+            fontSize: 13,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Not now'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              openAppSettings();
+            },
+            child: const Text('Open settings'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +204,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     iconPath: 'assets/images/camera_icon.svg',
                     iconBackground: const Color(0xFF381E75),
                     value: _camera,
-                    onChanged: (v) => setState(() => _camera = v),
+                    onChanged: (_) => _toggle(
+                      currentValue: _camera,
+                      permission: Permission.camera,
+                      permissionLabel: 'Camera',
+                      apply: (granted) => _camera = granted,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _PermissionCard(
@@ -70,7 +218,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     iconPath: 'assets/images/gallery_icon.svg',
                     iconBackground: const Color(0xFF172F5A),
                     value: _gallery,
-                    onChanged: (v) => setState(() => _gallery = v),
+                    onChanged: (_) => _toggle(
+                      currentValue: _gallery,
+                      permission: _galleryPermission(),
+                      permissionLabel: 'Gallery',
+                      apply: (granted) => _gallery = granted,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _PermissionCard(
@@ -79,12 +232,17 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                     iconPath: 'assets/images/notifications_icon.svg',
                     iconBackground: const Color(0xFF432338),
                     value: _notifications,
-                    onChanged: (v) => setState(() => _notifications = v),
+                    onChanged: (_) => _toggle(
+                      currentValue: _notifications,
+                      permission: Permission.notification,
+                      permissionLabel: 'Notifications',
+                      apply: (granted) => _notifications = granted,
+                    ),
                   ),
                   const Spacer(),
                   SkeenButton.primary(
                     label: 'Continue',
-                    onPressed: () => context.go('/onboarding/terms'),
+                    onPressed: () => context.go('/onboarding/calibrate'),
                   ),
                   const SizedBox(height: 24),
                 ],

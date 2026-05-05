@@ -24,7 +24,8 @@ android {
         applicationId = "com.skeen.skeen"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ARCore requires API 24+; bump from the Flutter default if needed.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -37,6 +38,13 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    // ARCore Depth API + plane hit-testing for the AR-AI bridge.
+    implementation("com.google.ar:core:1.45.0")
+    // Co-routines for the depth sampling loop.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 }
 
 flutter {

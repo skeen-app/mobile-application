@@ -1,5 +1,11 @@
 # AI Model Specifications - skeen v2
 
+## Current Model
+- **Filename:** `skeen_v2_quantized.tflite`
+- **Format:** TFLite (Float16 Quantized)
+- **Input Shape:** [1, 224, 224, 3]
+- **Size:** ~7
+
 ## Model Overview
 - **Core Architecture:** EfficientNetB0 (Fine-tuned)
 - **Format:** TensorFlow Lite (.tflite)

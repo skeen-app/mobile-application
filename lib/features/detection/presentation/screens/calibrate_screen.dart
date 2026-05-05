@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_button.dart';
@@ -196,9 +197,7 @@ class _CalibrateScreenState extends State<CalibrateScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: SkeenButton.primary(
                 label: 'Calibrate',
-                onPressed: () {
-                  // Ready for Next phase
-                },
+                onPressed: () => context.go('/onboarding/terms'),
               ),
             ),
             const SizedBox(height: 24),

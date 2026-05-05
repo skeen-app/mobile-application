@@ -8,10 +8,19 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <!-- ARCore: AR-AI bridge for live distance + plane anchors -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
+    <!-- Gallery: pick lesion photos for analysis (Android 13+ scoped media) -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- Notifications: scan reminders + analysis ready alerts (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="skeen"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- ARCore optional: app installs without AR but uses it when present -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

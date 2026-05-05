@@ -61,8 +61,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (!mounted) return;
     if (ok) {
-      // TODO: replace with `/home` once the Patient context lands.
-      context.go('/onboarding/permissions');
+      // Returning users skip onboarding (permissions/calibration/terms) —
+      // those steps belong only to the post-registration funnel.
+      context.go('/home');
     } else {
       final failure = ref.read(authControllerProvider).failure;
       await SkeenAlertDialog.showError(

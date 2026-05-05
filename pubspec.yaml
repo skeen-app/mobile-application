@@ -42,6 +42,22 @@ dependencies:
   # Geolocation (Patient context: temperature/UV by current location)
   geolocator: ^13.0.2
 
+  # OS-level permissions (camera, gallery, notifications)
+  permission_handler: ^11.3.1
+
+  # ── Detection context: AR-AI bridge ─────────────────────────────
+  # On-device classification (EfficientNetB0 → 5 lesion classes)
+  tflite_flutter: ^0.11.0
+  image: ^4.3.0
+  # Encrypted local persistence of LesionAnalysis (AES-256)
+  sqflite: ^2.4.1
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  encrypt: ^5.0.3
+  flutter_secure_storage: ^9.2.2
+  # Stable IDs for LesionAnalysis records
+  uuid: ^4.5.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -57,7 +73,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/models/
+    - assets/models/skeen_v2_quantized.tflite
     - assets/images/
     - assets/images/home/
     - assets/images/nav/

@@ -10,6 +10,7 @@ import '../../../../core/widgets/skeen_top_app_bar.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/ar_reticle_overlay.dart';
+import '../widgets/camera_controls.dart';
 import '../widgets/scan_capture_button.dart';
 import '../widgets/scan_quality_hint.dart';
 
@@ -35,6 +36,9 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
   CaptureQuality _quality = CaptureQuality.initial;
   bool _isCapturing = false;
   bool _showShutterFlash = false;
+  bool _flashOn = false;
+  double _zoom = 1.0;
+  double _maxZoom = 5.0;
   String? _initError;
 
   @override
@@ -51,10 +55,40 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
         if (!mounted) return;
         setState(() => _quality = CaptureQuality.fromBrightness(value));
       });
+      final ctl = _service.controller;
+      if (ctl != null) {
+        try {
+          _maxZoom = (await ctl.getMaxZoomLevel()).clamp(1.0, 8.0);
+        } catch (_) {/* keep default */}
+      }
       if (mounted) setState(() {});
     } catch (e) {
       if (kDebugMode) debugPrint('Camera init failed: $e');
       if (mounted) setState(() => _initError = e.toString());
+    }
+  }
+
+  Future<void> _toggleFlash() async {
+    final ctl = _service.controller;
+    if (ctl == null) return;
+    final next = !_flashOn;
+    try {
+      await ctl.setFlashMode(next ? FlashMode.torch : FlashMode.off);
+      if (mounted) setState(() => _flashOn = next);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Flash toggle failed: $e');
+    }
+  }
+
+  Future<void> _setZoom(double value) async {
+    final ctl = _service.controller;
+    if (ctl == null) return;
+    final clamped = value.clamp(1.0, _maxZoom);
+    try {
+      await ctl.setZoomLevel(clamped);
+      if (mounted) setState(() => _zoom = clamped);
+    } catch (e) {
+      if (kDebugMode) debugPrint('Zoom failed: $e');
     }
   }
 
@@ -179,6 +213,25 @@ class _ScanAMoleScreenState extends State<ScanAMoleScreen>
                   ),
                 ),
               ArReticleOverlay(quality: _quality),
+              Positioned(
+                top: 16,
+                right: 16,
+                child: CameraFlashButton(
+                  isOn: _flashOn,
+                  onTap: _toggleFlash,
+                ),
+              ),
+              Positioned(
+                top: 70,
+                right: 16,
+                bottom: 16,
+                child: CameraZoomSlider(
+                  value: _zoom,
+                  min: 1.0,
+                  max: _maxZoom,
+                  onChanged: _setZoom,
+                ),
+              ),
               AnimatedOpacity(
                 opacity: _showShutterFlash ? 1 : 0,
                 duration: const Duration(milliseconds: 120),
