@@ -9,7 +9,7 @@ class ApiConfig {
 
   static const String baseUrl = String.fromEnvironment(
     'SKEEN_API_URL',
-    defaultValue: 'http://localhost:8000/api/v1',
+    defaultValue: 'http://192.168.1.55:8000/api/v1',
   );
 
   static Uri uri(String path) {
