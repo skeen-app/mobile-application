@@ -563,17 +563,30 @@ class _AnchoredLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     const labelW = 240.0;
     const labelH = 96.0;
+    const gap = 36.0; // distance between card edge and the mole
     final maxX = math.max(0.0, previewSize.width - labelW - 8);
     final maxY = math.max(0.0, previewSize.height - labelH - 8);
     final labelX = (anchorPoint.dx - labelW / 2).clamp(8.0, maxX);
-    final labelY = (anchorPoint.dy - labelH - 28).clamp(8.0, maxY);
+
+    // Prefer placing the card above the mole so the arrow points down at
+    // the lesion (most natural). When there isn't enough room above, flip
+    // it below so the arrow points up at the lesion instead.
+    final placeAbove = anchorPoint.dy > labelH + gap + 8;
+    final labelY = placeAbove
+        ? (anchorPoint.dy - labelH - gap).clamp(8.0, maxY)
+        : (anchorPoint.dy + gap).clamp(8.0, maxY);
+
+    final cardEdge = placeAbove
+        ? Offset(labelX + labelW / 2, labelY + labelH)
+        : Offset(labelX + labelW / 2, labelY);
+
     return Stack(
       children: [
         Positioned.fill(
           child: CustomPaint(
-            painter: _StemLinePainter(
-              from: anchorPoint,
-              to: Offset(labelX + labelW / 2, labelY + labelH),
+            painter: _ArrowPointerPainter(
+              cardEdge: cardEdge,
+              anchorPoint: anchorPoint,
             ),
           ),
         ),
@@ -583,26 +596,80 @@ class _AnchoredLabel extends StatelessWidget {
   }
 }
 
-class _StemLinePainter extends CustomPainter {
-  _StemLinePainter({required this.from, required this.to});
-  final Offset from;
-  final Offset to;
+/// Draws a speech-bubble-style triangular arrow that connects the popup's
+/// edge to the lesion, then a soft halo + dot at the lesion itself. Reads
+/// as a sign pointing at the mole.
+class _ArrowPointerPainter extends CustomPainter {
+  _ArrowPointerPainter({
+    required this.cardEdge,
+    required this.anchorPoint,
+  });
+
+  final Offset cardEdge;
+  final Offset anchorPoint;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = AppColors.violeta.withValues(alpha: 0.7)
-      ..strokeWidth = 1.5
+    final dir = anchorPoint - cardEdge;
+    final dist = dir.distance;
+    if (dist < 1) return;
+
+    final unit = Offset(dir.dx / dist, dir.dy / dist);
+    final perp = Offset(-unit.dy, unit.dx);
+    const halfBase = 11.0;
+
+    // Triangle: base at the card edge, apex stops just shy of the anchor
+    // so the dot at the anchor reads as a separate element.
+    final apex = anchorPoint - unit * 6;
+    final base1 = cardEdge + perp * halfBase;
+    final base2 = cardEdge - perp * halfBase;
+
+    final path = Path()
+      ..moveTo(base1.dx, base1.dy)
+      ..lineTo(apex.dx, apex.dy)
+      ..lineTo(base2.dx, base2.dy)
+      ..close();
+
+    final fill = Paint()
+      ..color = AppColors.violeta.withValues(alpha: 0.92)
       ..style = PaintingStyle.fill;
-    canvas.drawCircle(from, 5, paint);
-    paint
+    final stroke = Paint()
+      ..color = AppColors.violetaClaro.withValues(alpha: 0.9)
+      ..strokeWidth = 1.6
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawLine(from, to, paint);
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, fill);
+    canvas.drawPath(path, stroke);
+
+    // Halo around the lesion anchor (subtle outer ring + filled dot).
+    canvas.drawCircle(
+      anchorPoint,
+      11,
+      Paint()
+        ..color = AppColors.violetaClaro.withValues(alpha: 0.25)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorPoint,
+      6,
+      Paint()
+        ..color = AppColors.violetaClaro
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      anchorPoint,
+      6,
+      Paint()
+        ..color = AppColors.violeta
+        ..strokeWidth = 1.4
+        ..style = PaintingStyle.stroke,
+    );
   }
 
   @override
-  bool shouldRepaint(_StemLinePainter old) => old.from != from || old.to != to;
+  bool shouldRepaint(_ArrowPointerPainter old) =>
+      old.cardEdge != cardEdge || old.anchorPoint != anchorPoint;
 }
 
 class _AnchorLostHint extends StatelessWidget {
