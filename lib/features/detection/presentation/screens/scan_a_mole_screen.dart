@@ -376,19 +376,18 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                 isCapturing: isBusy,
                 onPressed: _handleCapture,
               ),
-              _SecondaryAction(
-                icon: isPresented ? Icons.refresh : Icons.tune_rounded,
-                label: isPresented ? 'Scan again' : 'Calibrate',
-                onTap: () async {
-                  if (isPresented) {
+              if (isPresented)
+                _SecondaryAction(
+                  icon: Icons.refresh,
+                  label: 'Scan again',
+                  onTap: () async {
                     await ref
                         .read(detectionControllerProvider.notifier)
                         .reset();
-                  } else {
-                    context.pushNamed('calibrate');
-                  }
-                },
-              ),
+                  },
+                )
+              else
+                const SizedBox(width: 60),
             ],
           ),
         ],

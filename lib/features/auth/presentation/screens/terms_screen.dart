@@ -62,7 +62,7 @@ class TermsScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
-                  const SkeenStepIndicator(currentStep: 3, totalSteps: 3),
+                  const SkeenStepIndicator(currentStep: 2, totalSteps: 2),
                   const SizedBox(height: 40),
                   const _TermsHeading(),
                   const SizedBox(height: 32),

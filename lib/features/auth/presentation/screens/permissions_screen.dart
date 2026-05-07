@@ -182,7 +182,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 16),
-                  const SkeenStepIndicator(currentStep: 1, totalSteps: 3),
+                  const SkeenStepIndicator(currentStep: 1, totalSteps: 2),
                   const SizedBox(height: 40),
                   const _AccessHeading(),
                   const SizedBox(height: 24),
@@ -242,7 +242,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   const Spacer(),
                   SkeenButton.primary(
                     label: 'Continue',
-                    onPressed: () => context.go('/onboarding/calibrate'),
+                    onPressed: () => context.go('/onboarding/terms'),
                   ),
                   const SizedBox(height: 24),
                 ],

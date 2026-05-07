@@ -482,17 +482,16 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                 isCapturing: isBusy || isMapping,
                 onPressed: _handleCapture,
               ),
-              _SecondaryAction(
-                icon: isPresented ? Icons.refresh : Icons.tune_rounded,
-                label: isPresented ? 'Scan again' : 'Calibrate',
-                onTap: () async {
-                  if (isPresented) {
-                    await _scanAgain();
-                  } else {
-                    context.pushNamed('calibrate');
-                  }
-                },
-              ),
+              if (isPresented)
+                _SecondaryAction(
+                  icon: Icons.refresh,
+                  label: 'Scan again',
+                  onTap: _scanAgain,
+                )
+              else
+                // Reserve the slot so the capture button stays centered
+                // even before a result is presented.
+                const SizedBox(width: 60),
             ],
           ),
         ],
