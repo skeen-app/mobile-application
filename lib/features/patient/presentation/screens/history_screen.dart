@@ -145,12 +145,20 @@ class _HistoryList extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 8),
           itemCount: entries.length,
           separatorBuilder: (_, _) => const SizedBox(height: 16),
-          itemBuilder: (context, i) => ScanHistoryCard(
-            entry: entries[i],
-            onTap: () {
-              // TODO(detection): push scan detail screen once it exists.
-            },
-          ),
+          itemBuilder: (context, i) {
+            final entry = entries[i];
+            return ScanHistoryCard(
+              entry: entry,
+              onTap: () => context.pushNamed(
+                'scan-detail',
+                pathParameters: {'scanId': entry.id},
+                extra: {
+                  'remoteImageUrl': entry.thumbnailUrl,
+                  'bodyRegion': entry.bodyPartLabel,
+                },
+              ),
+            );
+          },
         );
       },
     );

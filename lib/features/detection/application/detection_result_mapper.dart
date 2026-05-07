@@ -22,6 +22,7 @@ class DetectionResultMapper {
     double? distanceCm,
     DateTime? capturedAt,
     String? imageHash,
+    bool pendingUpload = false,
   }) {
     return LesionAnalysis(
       id: _uuid.v4(),
@@ -33,6 +34,7 @@ class DetectionResultMapper {
       bodyRegion: bodyRegion,
       distanceCm: distanceCm,
       imageHash: imageHash,
+      pendingUpload: pendingUpload,
     );
   }
 }

@@ -49,6 +49,14 @@ dependencies:
   # the lesion as the user rotates the phone — same trick Pokémon GO uses).
   sensors_plus: ^6.0.1
 
+  # Network reachability — drives the offline-first scan sync orchestrator.
+  connectivity_plus: ^6.1.0
+
+  # PDF report generation (triage result "Download report" button).
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  share_plus: ^10.1.2
+
   # ── Detection context: AR-AI bridge ─────────────────────────────
   # On-device classification (EfficientNetB0 → 5 lesion classes)
   tflite_flutter: ^0.11.0

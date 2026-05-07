@@ -3,7 +3,8 @@
     "allow": [
       "Bash(flutter test *)",
       "mcp__claude_ai_Figma__get_design_context",
-      "Bash(flutter analyze *)"
+      "Bash(flutter analyze *)",
+      "Bash(flutter build *)"
     ]
   }
 }

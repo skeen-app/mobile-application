@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../patient/presentation/widgets/body_part_icon.dart';
 
 /// Bottom sheet / inline picker for body region selection after capture.
 /// Presented before navigating to the triage result screen so the captured
@@ -10,16 +11,16 @@ class BodyRegionPicker extends StatelessWidget {
 
   final ValueChanged<String> onSelected;
 
-  static const _regions = <_RegionOption>[
-    _RegionOption(label: 'Head', icon: Icons.face_outlined),
-    _RegionOption(label: 'Neck', icon: Icons.accessibility_new),
-    _RegionOption(label: 'Chest', icon: Icons.airline_seat_flat),
-    _RegionOption(label: 'Back', icon: Icons.event_seat),
-    _RegionOption(label: 'Left Arm', icon: Icons.back_hand_outlined),
-    _RegionOption(label: 'Right Arm', icon: Icons.front_hand_outlined),
-    _RegionOption(label: 'Abdomen', icon: Icons.crop_square_outlined),
-    _RegionOption(label: 'Left Leg', icon: Icons.directions_walk),
-    _RegionOption(label: 'Right Leg', icon: Icons.directions_walk_outlined),
+  static const _regions = <String>[
+    'Head',
+    'Neck',
+    'Chest',
+    'Back',
+    'Left Arm',
+    'Right Arm',
+    'Abdomen',
+    'Left Leg',
+    'Right Leg',
   ];
 
   /// Show as a modal bottom sheet.
@@ -81,10 +82,9 @@ class BodyRegionPicker extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: _regions
-                .map((r) => _RegionChip(
-                      label: r.label,
-                      icon: r.icon,
-                      onTap: () => onSelected(r.label),
+                .map((label) => _RegionChip(
+                      label: label,
+                      onTap: () => onSelected(label),
                     ))
                 .toList(),
           ),
@@ -94,21 +94,10 @@ class BodyRegionPicker extends StatelessWidget {
   }
 }
 
-class _RegionOption {
-  const _RegionOption({required this.label, required this.icon});
-  final String label;
-  final IconData icon;
-}
-
 class _RegionChip extends StatelessWidget {
-  const _RegionChip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
+  const _RegionChip({required this.label, required this.onTap});
 
   final String label;
-  final IconData icon;
   final VoidCallback onTap;
 
   @override
@@ -128,7 +117,11 @@ class _RegionChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: AppColors.violeta, size: 18),
+              BodyPartIcon.fromLabel(
+                label: label,
+                color: AppColors.violeta,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Text(
                 label,

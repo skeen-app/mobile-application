@@ -105,12 +105,14 @@ class DetectionController extends StateNotifier<DetectionState> {
     required DetectionResultMapper mapper,
     required LesionRepositoryPort repository,
     required this.patientId,
+    void Function()? onScanSaved,
   })  : _session = session,
         _inference = inference,
         _camera = camera,
         _translator = translator,
         _mapper = mapper,
         _repository = repository,
+        _onScanSaved = onScanSaved,
         super(const DetectionState(phase: DetectionPhase.initializing));
 
   final ArSessionPort _session;
@@ -119,6 +121,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   final CoordinateTranslator _translator;
   final DetectionResultMapper _mapper;
   final LesionRepositoryPort _repository;
+  final void Function()? _onScanSaved;
   final String patientId;
 
   StreamSubscription<CaptureDistance>? _distanceSub;
@@ -298,10 +301,19 @@ class DetectionController extends StateNotifier<DetectionState> {
         anchor: anchor,
         distanceCm: state.distance.isKnown ? state.distance.cm : null,
         imageHash: hash,
+        // Queue every freshly captured scan for cloud sync — the
+        // [SyncOrchestrator] only actually uploads when the user has
+        // opted in via privacy settings.
+        pendingUpload: true,
       );
 
       // Persist encrypted (metadata + image blob AES-256)
       await _repository.save(analysis, jpegBytes: bytes);
+
+      // Fire-and-forget cloud sync — no-op when offline / opted out.
+      // The user proceeds without waiting; the orchestrator retries on
+      // the next foreground or connectivity-restored event.
+      _onScanSaved?.call();
 
       if (!mounted) return;
       state = state.copyWith(
@@ -351,6 +363,18 @@ class DetectionController extends StateNotifier<DetectionState> {
   }
 }
 
+/// Bound from `main.dart` once the orchestrator is wired so this file
+/// doesn't import sync_orchestrator.dart (which already depends on
+/// providers declared here). Whoever creates the orchestrator must call
+/// [bindPostCaptureHook] to register the callback.
+typedef PostCaptureHook = void Function();
+
+PostCaptureHook? _postCaptureHook;
+
+void bindPostCaptureHook(PostCaptureHook hook) {
+  _postCaptureHook = hook;
+}
+
 /// Provider scoped to the AR scan screen lifecycle. Auto-disposed on screen
 /// exit so the AR session and TFLite isolate are torn down promptly.
 final detectionControllerProvider =
@@ -365,6 +389,7 @@ final detectionControllerProvider =
       mapper: ref.watch(detectionResultMapperProvider),
       repository: ref.watch(lesionRepositoryProvider),
       patientId: user?.id ?? 'anonymous',
+      onScanSaved: () => _postCaptureHook?.call(),
     )..bootstrap();
   },
 );

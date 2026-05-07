@@ -14,7 +14,8 @@ import 'auth_controller.dart';
 final profileSummaryProvider =
     FutureProvider<PatientProfileSummary>((ref) async {
   final user = ref.watch(authControllerProvider.select((s) => s.user));
-  final lesions = await ref.read(lesionSummaryRepositoryProvider).findAll();
+  final repo = ref.read(lesionSummaryRepositoryProvider);
+  final lesions = repo == null ? const [] : await repo.findAll();
   return PatientProfileSummary(
     registeredMoles: lesions.length,
     lastScanAt: user?.lastScanAt,

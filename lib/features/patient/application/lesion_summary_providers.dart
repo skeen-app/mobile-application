@@ -1,25 +1,42 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/logger/app_logger.dart';
+import '../../auth/application/auth_controller.dart';
+import '../../detection/application/providers.dart';
+import '../../detection/application/sync_orchestrator.dart';
 import '../domain/body_region.dart';
 import '../domain/lesion_summary.dart';
 import '../infrastructure/repositories/lesion_summary_repository.dart';
-import '../../../core/logger/app_logger.dart';
 
-final lesionSummaryRepositoryProvider = Provider<LesionSummaryRepository>((ref) {
-  return LesionSummaryRepository();
+final lesionSummaryRepositoryProvider =
+    Provider<LesionSummaryRepository?>((ref) {
+  final user = ref.watch(authControllerProvider).user;
+  if (user == null) return null;
+  return LesionSummaryRepository(
+    api: ref.watch(scansApiProvider),
+    localRepository: ref.watch(lesionRepositoryProvider),
+    tokenReader: () => ref.read(authControllerProvider).token?.value,
+    patientId: user.id,
+  );
 });
 
 /// All registered lesions for the current patient — drives both the body-map
 /// dots and the per-region counts on the home dashboard.
-final lesionSummariesProvider = FutureProvider<List<LesionSummary>>((ref) async {
-  AppLogger.info('Loading lesion summaries from repository', tag: 'LesionSummaryProvider');
+final lesionSummariesProvider =
+    FutureProvider<List<LesionSummary>>((ref) async {
+  final repo = ref.watch(lesionSummaryRepositoryProvider);
+  if (repo == null) return const [];
+  AppLogger.info('Loading lesion summaries', tag: 'LesionSummaryProvider');
   try {
-    final summaries = await ref.read(lesionSummaryRepositoryProvider).findAll();
-    AppLogger.info('Loaded ${summaries.length} lesion summaries', tag: 'LesionSummaryProvider');
-    return summaries;
+    return await repo.findAll();
   } catch (e, stack) {
-    AppLogger.error('Failed to load lesion summaries', tag: 'LesionSummaryProvider', error: e, stackTrace: stack);
-    rethrow;
+    AppLogger.error(
+      'Failed to load lesion summaries',
+      tag: 'LesionSummaryProvider',
+      error: e,
+      stackTrace: stack,
+    );
+    return const [];
   }
 });
 

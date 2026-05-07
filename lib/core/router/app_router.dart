@@ -17,6 +17,7 @@ import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
 import '../../features/auth/presentation/screens/terms_screen.dart';
 import '../../features/detection/presentation/screens/calibrate_screen.dart';
+import '../../features/detection/presentation/screens/scan_detail_screen.dart';
 import '../../features/detection/presentation/screens/scan_router_screen.dart';
 import '../../features/detection/presentation/screens/triage_result_screen.dart';
 import '../../features/detection/presentation/screens/upload_photo_screen.dart';
@@ -170,6 +171,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             analysisId: extra['analysisId'] as String? ?? '',
             capturedImageBytes:
                 extra['capturedImageBytes'] as Uint8List? ?? Uint8List(0),
+            bodyRegion: extra['bodyRegion'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/scan/detail/:scanId',
+        name: 'scan-detail',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return ScanDetailScreen(
+            scanId: state.pathParameters['scanId']!,
+            remoteImageUrl: extra['remoteImageUrl'] as String?,
             bodyRegion: extra['bodyRegion'] as String?,
           );
         },
