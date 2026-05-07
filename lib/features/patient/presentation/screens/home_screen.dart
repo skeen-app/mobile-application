@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../detection/application/sync_orchestrator.dart';
 import '../../application/environment_providers.dart';
@@ -70,8 +71,11 @@ class HomeScreen extends ConsumerWidget {
                                 children: [
                                   HomeGreeting(
                                     firstName: firstName,
-                                    hasNotifications: true,
-                                    onNotificationsTap: () {},
+                                    unreadCount: ref
+                                        .watch(notificationsControllerProvider)
+                                        .unreadCount,
+                                    onNotificationsTap: () =>
+                                        context.pushNamed('notifications'),
                                   ),
                                   const SizedBox(height: 18),
                                   ScanAMoleCard(

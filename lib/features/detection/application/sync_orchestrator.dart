@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/logger/app_logger.dart';
+import '../../../core/notifications/notifications_controller.dart';
 import '../../auth/application/auth_controller.dart';
 import '../../auth/application/privacy_settings.dart';
 import '../domain/lesion_analysis.dart';
@@ -32,12 +33,14 @@ class SyncOrchestrator {
     required this.api,
     required this.tokenReader,
     required this.cloudSyncEnabledReader,
+    this.notifications,
   });
 
   final LesionRepositoryPort repository;
   final ScansApi api;
   final String? Function() tokenReader;
   final bool Function() cloudSyncEnabledReader;
+  final NotificationsController? notifications;
 
   StreamSubscription<List<ConnectivityResult>>? _connSub;
   bool _running = false;
@@ -102,6 +105,7 @@ class SyncOrchestrator {
         if (ok) {
           await repository.markUploaded(analysis.id);
           uploaded += 1;
+          notifications?.recordScanSyncedToCloud(scanId: analysis.id);
         }
       }
     } catch (e, st) {
@@ -275,6 +279,7 @@ final syncOrchestratorProvider = Provider<SyncOrchestrator>((ref) {
     tokenReader: () => ref.read(authControllerProvider).token?.value,
     cloudSyncEnabledReader: () =>
         ref.read(privacySettingsProvider).cloudSyncEnabled,
+    notifications: ref.read(notificationsControllerProvider.notifier),
   );
   ref.onDispose(orchestrator.stop);
   return orchestrator;

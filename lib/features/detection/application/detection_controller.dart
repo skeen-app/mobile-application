@@ -5,9 +5,11 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/notifications/notifications_controller.dart';
 import '../../auth/application/auth_controller.dart';
 import '../domain/ar_geometry.dart';
 import '../domain/capture_quality.dart';
+import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
 import '../domain/ports.dart';
 import 'coordinate_translator.dart';
@@ -105,6 +107,7 @@ class DetectionController extends StateNotifier<DetectionState> {
     required DetectionResultMapper mapper,
     required LesionRepositoryPort repository,
     required this.patientId,
+    NotificationsController? notifications,
     void Function()? onScanSaved,
   })  : _session = session,
         _inference = inference,
@@ -112,6 +115,7 @@ class DetectionController extends StateNotifier<DetectionState> {
         _translator = translator,
         _mapper = mapper,
         _repository = repository,
+        _notifications = notifications,
         _onScanSaved = onScanSaved,
         super(const DetectionState(phase: DetectionPhase.initializing));
 
@@ -121,6 +125,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   final CoordinateTranslator _translator;
   final DetectionResultMapper _mapper;
   final LesionRepositoryPort _repository;
+  final NotificationsController? _notifications;
   final void Function()? _onScanSaved;
   final String patientId;
 
@@ -310,6 +315,27 @@ class DetectionController extends StateNotifier<DetectionState> {
       // Persist encrypted (metadata + image blob AES-256)
       await _repository.save(analysis, jpegBytes: bytes);
 
+      // Activity log: a freshly captured scan + its prediction. The
+      // high-risk row is split out so the user gets a separate banner
+      // when the model flags something concerning — easier to spot in
+      // the activity list later.
+      _notifications?.recordScanCompleted(
+        scanId: analysis.id,
+        bodyRegion: analysis.bodyRegion,
+      );
+      _notifications?.recordPredictionReady(
+        scanId: analysis.id,
+        label: result.topLabel.display,
+        confidence: result.confidence,
+      );
+      if (result.warningLevel == WarningLevel.alert) {
+        _notifications?.recordHighRiskDetected(
+          scanId: analysis.id,
+          label: result.topLabel.display,
+          confidence: result.confidence,
+        );
+      }
+
       // Fire-and-forget cloud sync — no-op when offline / opted out.
       // The user proceeds without waiting; the orchestrator retries on
       // the next foreground or connectivity-restored event.
@@ -389,6 +415,7 @@ final detectionControllerProvider =
       mapper: ref.watch(detectionResultMapperProvider),
       repository: ref.watch(lesionRepositoryProvider),
       patientId: user?.id ?? 'anonymous',
+      notifications: ref.read(notificationsControllerProvider.notifier),
       onScanSaved: () => _postCaptureHook?.call(),
     )..bootstrap();
   },

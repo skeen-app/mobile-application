@@ -21,6 +21,7 @@ import '../../features/detection/presentation/screens/scan_detail_screen.dart';
 import '../../features/detection/presentation/screens/scan_router_screen.dart';
 import '../../features/detection/presentation/screens/triage_result_screen.dart';
 import '../../features/detection/presentation/screens/upload_photo_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../../features/experts/presentation/screens/experts_screen.dart';
 import '../../features/patient/presentation/screens/body_map_screen.dart';
 import '../../features/patient/presentation/screens/history_screen.dart';
@@ -148,6 +149,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'history',
         builder: (context, state) => const HistoryScreen(),
       ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
 
       // Detection context (entered from home / center FAB). The router
       // screen probes ARKit/ARCore + depth and mounts ArScanScreen when
@@ -212,8 +218,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const PrivacySecurityScreen(),
           ),
           GoRoute(
-            path: 'notifications',
-            name: 'notifications',
+            path: 'notification-preferences',
+            name: 'notifications-settings',
             builder: (context, state) => const NotificationsSettingsScreen(),
           ),
         ],

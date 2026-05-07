@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/notifications/in_app_banner.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/application/auth_controller.dart';
@@ -77,6 +78,12 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       routerConfig: router,
+      builder: (context, child) {
+        // Mounts the in-app banner overlay above every route, including
+        // the auth funnel — once a notification is recorded the banner
+        // shows wherever the user happens to be.
+        return InAppNotificationBannerHost(child: child ?? const SizedBox());
+      },
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -112,6 +113,7 @@ Future<void> _onChangePassword(BuildContext context, WidgetRef ref) async {
   try {
     final result =
         await ref.read(authApiProvider).requestMyPasswordReset(token: token);
+    ref.notifications.recordPasswordChanged();
     if (!context.mounted) return;
     messenger.showSnackBar(
       SnackBar(

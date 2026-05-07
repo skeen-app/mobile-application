@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_auth_header.dart';
 import '../../../../core/widgets/skeen_button.dart';
@@ -53,6 +54,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
       await ref.read(authApiProvider).requestPasswordReset(
             email: _emailCtrl.text.trim(),
           );
+      ref.notifications.recordPasswordChanged();
       if (!mounted) return;
       context.go('/forgot-password/success');
     } on AuthFailure catch (failure) {
