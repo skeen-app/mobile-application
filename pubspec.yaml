@@ -57,6 +57,9 @@ dependencies:
   printing: ^5.13.4
   share_plus: ^10.1.2
 
+  # Open article links in the platform browser (Insights feed).
+  url_launcher: ^6.3.1
+
   # ── Detection context: AR-AI bridge ─────────────────────────────
   # On-device classification (EfficientNetB0 → 5 lesion classes)
   tflite_flutter: ^0.11.0

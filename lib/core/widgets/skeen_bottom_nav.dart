@@ -79,7 +79,7 @@ class SkeenBottomNav extends StatelessWidget {
                       Expanded(
                         child: _NavItem(
                           asset: 'assets/images/nav/experts_icon.svg',
-                          label: 'Experts',
+                          label: 'Insights',
                           active: activeTab == SkeenNavTab.experts,
                           onTap: () => onTabSelected(SkeenNavTab.experts),
                         ),
