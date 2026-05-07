@@ -136,6 +136,76 @@ class AuthApi {
     throw _mapError(res, path: '/auth/me');
   }
 
+  /// Public password-reset flow — used by the unauthenticated
+  /// `forgot-password` screen. The backend always responds 200 (even if
+  /// the email isn't registered) to prevent enumeration; the only branch
+  /// where this throws is genuine network / 5xx / rate-limit failures.
+  Future<void> requestPasswordReset({required String email}) async {
+    AppLogger.info('POST /auth/password-reset/request', tag: 'AuthApi');
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            ApiConfig.uri('/auth/password-reset/request'),
+            headers: ApiConfig.jsonHeaders,
+            body: jsonEncode({'email': email}),
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network error during password reset request',
+          tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) return;
+    if (res.statusCode == 429) {
+      throw const AuthApiFailure(
+          'Too many attempts. Please wait a few minutes and try again.');
+    }
+    throw _mapError(res, path: '/auth/password-reset/request');
+  }
+
+  /// Authenticated password-reset flow — Privacy & Security → Change
+  /// password. The backend reads the email from the user's profile and
+  /// returns it partially masked so the UI can confirm "We sent
+  /// instructions to jo***@example.com" without having to render the
+  /// stored email in plaintext.
+  Future<({String maskedEmail})> requestMyPasswordReset({
+    required AuthToken token,
+  }) async {
+    AppLogger.info('POST /auth/me/password-reset', tag: 'AuthApi');
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            ApiConfig.uri('/auth/me/password-reset'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network error during authenticated reset',
+          tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = _decodeJson(res);
+      return (maskedEmail: json['email'] as String? ?? '');
+    }
+    if (res.statusCode == 429) {
+      throw const AuthApiFailure(
+          'Too many attempts. Please wait a few minutes and try again.');
+    }
+    throw _mapError(res, path: '/auth/me/password-reset');
+  }
+
   /// Soft-deletes the user record (Firestore `isActive=false`) and removes
   /// the Firebase Auth identity. The local session is the caller's
   /// responsibility — see [AuthController.deleteAccount].
