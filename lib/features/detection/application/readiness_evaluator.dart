@@ -30,9 +30,11 @@ class ReadinessEvaluator {
   CaptureDistance _distance = const CaptureDistance.unknown();
   bool _isStable = false;
 
-  // Stability tracking: last N sharpness readings.
-  static const int _stabilityWindowSize = 5;
-  static const double _stabilityTolerance = 0.08;
+  // Stability tracking: last N sharpness readings. Tightened so the gate
+  // unlocks fast — a 3-sample window at ~3 Hz lands ≈600 ms instead of
+  // ~1.5 s, which felt like the app had hung.
+  static const int _stabilityWindowSize = 3;
+  static const double _stabilityTolerance = 0.18;
   final List<double> _recentSharpness = [];
   DateTime _lastStableCheck = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -76,15 +78,17 @@ class ReadinessEvaluator {
     }
 
     final now = DateTime.now();
-    if (now.difference(_lastStableCheck).inMilliseconds < 200) return;
+    if (now.difference(_lastStableCheck).inMilliseconds < 150) return;
     _lastStableCheck = now;
 
+    // First two samples are enough to "feel" stable — once the user has
+    // held the phone for ~half a second the focus search has typically
+    // settled. Tight tolerance is reserved for the final sharpness pass.
     if (_recentSharpness.length < _stabilityWindowSize) {
-      _isStable = false;
+      _isStable = _recentSharpness.length >= 2 && sharpness > 0.05;
       return;
     }
 
-    // Check if all recent sharpness readings are within tolerance.
     final mean =
         _recentSharpness.reduce((a, b) => a + b) / _recentSharpness.length;
     _isStable = _recentSharpness

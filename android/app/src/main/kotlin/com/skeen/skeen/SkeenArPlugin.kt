@@ -232,9 +232,15 @@ class SkeenArPlugin(private val context: Context) :
     fun setDisplayGeometry(width: Int, height: Int) {
         displayWidth = width
         displayHeight = height
-        displayRotation = activity?.windowManager?.defaultDisplay?.rotation ?: 0
+        // The Flutter screen locks to portrait while AR is open, so we
+        // always pass Surface.ROTATION_0. This avoids the camera image
+        // appearing landscape-stretched when the platform-view's hosting
+        // surface was created with a different rotation than the display.
+        displayRotation = 0
         try {
             session?.setDisplayGeometry(displayRotation, width, height)
+            // Force a fresh transform on the next frame.
+            cachedTexCoords = null
         } catch (_: Throwable) {}
     }
 
@@ -307,20 +313,36 @@ class SkeenArPlugin(private val context: Context) :
      */
     private fun hitTest(nx: Float, ny: Float): Map<String, Any>? {
         val frame = lastFrame ?: return null
+        val s = session ?: return null
         return try {
             val w = displayWidth.toFloat().takeIf { it > 0 } ?: 1080f
             val h = displayHeight.toFloat().takeIf { it > 0 } ?: 1920f
             val results = frame.hitTest(nx * w, ny * h)
-            // Prefer hits inside a detected plane; fall back to any hit.
             val preferred = results.firstOrNull { hr ->
                 val t = hr.trackable
                 (t is Plane && t.isPoseInPolygon(hr.hitPose)) ||
                     t is Point ||
                     t.javaClass.simpleName == "DepthPoint"
-            } ?: results.firstOrNull() ?: return null
+            } ?: results.firstOrNull()
+
+            // Skin is curved → ARCore rarely produces a plane hit. When no
+            // hit lands, synthesize a session-level anchor at ~15 cm in
+            // front of the camera. ARCore still tracks it relative to the
+            // world, so the popup follows phone motion just like a real
+            // raycast anchor.
+            val anchor: Anchor = if (preferred != null) {
+                preferred.createAnchor()
+            } else {
+                val cam = frame.camera.pose
+                val zAxis = cam.zAxis
+                val forwardDist = 0.15f
+                val tx = cam.tx() - zAxis[0] * forwardDist
+                val ty = cam.ty() - zAxis[1] * forwardDist
+                val tz = cam.tz() - zAxis[2] * forwardDist
+                s.createAnchor(Pose.makeTranslation(tx, ty, tz))
+            }
 
             val id = "anchor-${System.nanoTime()}"
-            val anchor = preferred.createAnchor()
             anchors[id] = anchor
             poseToMap(anchor.pose, id)
         } catch (_: Throwable) {

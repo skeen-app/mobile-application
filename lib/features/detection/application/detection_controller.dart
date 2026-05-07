@@ -125,8 +125,13 @@ class DetectionController extends StateNotifier<DetectionState> {
 
   Future<void> bootstrap() async {
     try {
+      // The AR session is no longer started here — the camera plugin owns
+      // the back camera in the AR scan flow (it renders a reliable preview;
+      // ARCore's GLSurfaceView path had rotation/aspect issues inside
+      // Flutter's PlatformView compositor). The session can still be
+      // started explicitly by a screen that wants 3D anchors via shared
+      // camera mode in the future.
       await Future.wait([
-        _session.start(),
         _inference.load(),
         _repository.initialize(),
       ]);
