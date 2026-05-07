@@ -2,28 +2,42 @@ package com.skeen.skeen
 
 import android.app.Activity
 import android.content.Context
-import android.os.Handler
-import android.os.Looper
-import com.google.ar.core.ArCoreApk
-import com.google.ar.core.Config
-import com.google.ar.core.Frame
-import com.google.ar.core.Pose
-import com.google.ar.core.Session
-import com.google.ar.core.exceptions.UnavailableException
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodChannel
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import kotlin.math.sqrt
-
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
+import android.os.Handler
+import android.os.Looper
+import com.google.ar.core.Anchor
+import com.google.ar.core.ArCoreApk
+import com.google.ar.core.Config
+import com.google.ar.core.Coordinates2d
+import com.google.ar.core.Frame
+import com.google.ar.core.Plane
+import com.google.ar.core.Point
+import com.google.ar.core.Pose
+import com.google.ar.core.Session
+import com.google.ar.core.TrackingState
+import com.google.ar.core.exceptions.UnavailableException
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Bridges the Detection bounded context's ArSessionPort to ARCore.
- * Modified to support a native GLSurfaceView PlatformView.
+ *
+ * Threading model:
+ *   • [updateSession] is the ONLY caller of Session.update(); it runs on the
+ *     GL thread (driven by [ArCoreView]) and stores the latest [Frame] in a
+ *     volatile field.
+ *   • All MethodChannel calls (hitTest, projectToScreen, depth sampling) read
+ *     from [lastFrame] — never call session.update() off the GL thread.
+ *   • Anchors live in a thread-safe map keyed by id so the Dart side can
+ *     project their *current* tracked pose every frame, mimicking the
+ *     Pokémon-GO style "popup pegado a la piel".
  */
 class SkeenArPlugin(private val context: Context) :
     MethodChannel.MethodCallHandler, EventChannel.StreamHandler {
@@ -34,15 +48,49 @@ class SkeenArPlugin(private val context: Context) :
     private val handler = Handler(Looper.getMainLooper())
     private val sampleRateMs = 100L
     private var samplingRunnable: Runnable? = null
+    private var pendingTexId: Int? = null
+    private var isRunning = false
+    private var flashOn = false
+
+    @Volatile private var lastFrame: Frame? = null
+
+    private val anchors = ConcurrentHashMap<String, Anchor>()
 
     var activity: Activity? = null
+        set(value) {
+            field = value
+            // ARCore install prompts require an Activity reference.
+        }
 
-    // For GLSurfaceView integration
     private var displayWidth = 0
     private var displayHeight = 0
     private var displayRotation = 0
 
-    override fun onMethodCall(call: io.flutter.plugin.common.MethodCall, result: MethodChannel.Result) {
+    // ── Lifecycle delegated from MainActivity ─────────────────────────
+
+    fun onActivityResume() {
+        val s = session ?: return
+        try {
+            val texId = pendingTexId
+            if (texId != null) s.setCameraTextureName(texId)
+            s.resume()
+            isRunning = true
+        } catch (e: Throwable) {
+            // ARCore may throw CameraNotAvailableException — swallow; the
+            // user can retry by reopening the screen.
+        }
+    }
+
+    fun onActivityPause() {
+        try {
+            session?.pause()
+            isRunning = false
+        } catch (_: Throwable) {}
+    }
+
+    // ── MethodChannel ─────────────────────────────────────────────────
+
+    override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "probeCapabilities" -> result.success(probeCapabilities())
             "start" -> {
@@ -62,15 +110,29 @@ class SkeenArPlugin(private val context: Context) :
                 val map = call.arguments as? Map<*, *>
                 result.success(projectToScreen(map))
             }
+            "anchorState" -> {
+                val id = call.argument<String>("id")
+                result.success(anchorState(id))
+            }
             "captureFrame" -> {
-                // Return in background thread to not block UI
                 Thread {
                     val bytes = captureFrame()
                     handler.post { result.success(bytes) }
                 }.start()
             }
-            "setFlash" -> result.success(null)
+            "setFlash" -> {
+                val on = call.argument<Boolean>("on") ?: false
+                setFlashTorch(on)
+                result.success(null)
+            }
             "setZoom" -> result.success(null)
+            "removeAnchor" -> {
+                val id = call.argument<String>("id")
+                if (id != null) {
+                    anchors.remove(id)?.detach()
+                }
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -95,198 +157,327 @@ class SkeenArPlugin(private val context: Context) :
         )
     }
 
-    private var pendingTexId: Int? = null
-    private var isStarted = false
-
     private fun start() {
         if (session != null) return
+        val act = activity
         try {
+            // Trigger ARCore install if missing — first call returns
+            // INSTALL_REQUESTED, second call returns INSTALLED.
+            if (act != null) {
+                when (ArCoreApk.getInstance().requestInstall(act, true)) {
+                    ArCoreApk.InstallStatus.INSTALL_REQUESTED -> return
+                    ArCoreApk.InstallStatus.INSTALLED -> Unit
+                    null -> Unit
+                }
+            }
+
             val s = Session(context)
             val config = Config(s).apply {
-                if (depthSupported) {
+                if (s.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                     depthMode = Config.DepthMode.AUTOMATIC
+                    depthSupported = true
                 }
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 focusMode = Config.FocusMode.AUTO
+                lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
+                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
             }
             s.configure(config)
             session = s
-            isStarted = true
 
-            pendingTexId?.let {
-                s.setCameraTextureName(it)
+            // Camera texture is bound from the GL thread; resume happens
+            // either there or in onActivityResume once both texId and
+            // session exist.
+            pendingTexId?.let { s.setCameraTextureName(it) }
+            try {
                 s.resume()
+                isRunning = true
+            } catch (_: Throwable) {
+                // Will retry from onActivityResume / GL thread setCameraTextureName.
             }
             startDepthSampling()
-        } catch (e: Throwable) {
-            // Error handling
+        } catch (_: Throwable) {
+            session = null
         }
     }
 
     private fun stop() {
         samplingRunnable?.let { handler.removeCallbacks(it) }
         samplingRunnable = null
-        session?.pause()
-        session?.close()
+        anchors.values.forEach { it.detach() }
+        anchors.clear()
+        try {
+            session?.pause()
+            session?.close()
+        } catch (_: Throwable) {}
         session = null
+        lastFrame = null
+        isRunning = false
     }
+
+    // ── GL thread API (called by ArCoreView) ──────────────────────────
 
     fun setCameraTextureName(texId: Int) {
         pendingTexId = texId
-        if (isStarted) {
-            val s = session
-            s?.setCameraTextureName(texId)
-            s?.resume()
-        }
+        val s = session ?: return
+        try {
+            s.setCameraTextureName(texId)
+            if (!isRunning) {
+                s.resume()
+                isRunning = true
+            }
+        } catch (_: Throwable) {}
     }
 
     fun setDisplayGeometry(width: Int, height: Int) {
         displayWidth = width
         displayHeight = height
         displayRotation = activity?.windowManager?.defaultDisplay?.rotation ?: 0
-        session?.setDisplayGeometry(displayRotation, width, height)
+        try {
+            session?.setDisplayGeometry(displayRotation, width, height)
+        } catch (_: Throwable) {}
     }
 
+    /** Called on the GL thread once per frame. Returns the latest [Frame]. */
     fun updateSession(): Frame? {
         return try {
-            session?.update()
-        } catch (e: Throwable) {
+            val s = session ?: return null
+            val frame = s.update()
+            lastFrame = frame
+            frame
+        } catch (_: Throwable) {
             null
         }
     }
 
-    fun getTransformedTexCoords(coords: FloatArray): FloatArray {
-        val frame = try { session?.update() } catch (e: Throwable) { null }
-        if (frame == null || !frame.hasDisplayGeometryChanged()) {
-            return coords
+    /**
+     * Maps the fullscreen NDC quad vertices into texture coordinates that
+     * sample the camera image with the correct rotation AND aspect ratio.
+     *
+     * The previous API (`transformDisplayUvCoords`) only handled rotation —
+     * if the viewport aspect didn't match the camera image aspect the feed
+     * appeared stretched. `transformCoordinates2d` from NDC → TEXTURE is the
+     * supported replacement and handles both.
+     *
+     * Recomputed only when [Frame.hasDisplayGeometryChanged] flips, then
+     * cached for subsequent frames.
+     */
+    private val ndcQuadCoords = floatArrayOf(
+        -1f, -1f,
+        -1f, 1f,
+        1f, -1f,
+        1f, 1f
+    )
+    private var cachedTexCoords: FloatArray? = null
+
+    fun getTransformedTexCoords(@Suppress("UNUSED_PARAMETER") fallback: FloatArray): FloatArray {
+        val frame = lastFrame
+        val cached = cachedTexCoords
+        if (frame != null && (cached == null || frame.hasDisplayGeometryChanged())) {
+            try {
+                val ndc = ByteBuffer.allocateDirect(ndcQuadCoords.size * 4)
+                    .order(ByteOrder.nativeOrder()).asFloatBuffer()
+                ndc.put(ndcQuadCoords); ndc.position(0)
+                val out = ByteBuffer.allocateDirect(ndcQuadCoords.size * 4)
+                    .order(ByteOrder.nativeOrder()).asFloatBuffer()
+                frame.transformCoordinates2d(
+                    Coordinates2d.OPENGL_NORMALIZED_DEVICE_COORDINATES,
+                    ndc,
+                    Coordinates2d.TEXTURE_NORMALIZED,
+                    out
+                )
+                val arr = FloatArray(ndcQuadCoords.size)
+                out.position(0); out.get(arr)
+                cachedTexCoords = arr
+                return arr
+            } catch (_: Throwable) {
+                // fall through to last known mapping
+            }
         }
-        val buffer = ByteBuffer.allocateDirect(coords.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        buffer.put(coords)
-        buffer.position(0)
-        
-        val transformed = ByteBuffer.allocateDirect(coords.size * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
-        frame.transformDisplayUvCoords(buffer, transformed)
-        
-        val out = FloatArray(coords.size)
-        transformed.position(0)
-        transformed.get(out)
-        return out
+        return cached ?: floatArrayOf(0f, 1f, 0f, 0f, 1f, 1f, 1f, 0f)
     }
 
+    // ── Anchor / projection ───────────────────────────────────────────
+
+    /**
+     * Hit-test the (normalized) screen point and create a *real* tracked
+     * [Anchor] when a Plane / Point / DepthPoint is found. The Anchor is
+     * stored in [anchors] so subsequent projection calls follow its tracked
+     * pose — this is what makes the popup stick to the skin.
+     */
+    private fun hitTest(nx: Float, ny: Float): Map<String, Any>? {
+        val frame = lastFrame ?: return null
+        return try {
+            val w = displayWidth.toFloat().takeIf { it > 0 } ?: 1080f
+            val h = displayHeight.toFloat().takeIf { it > 0 } ?: 1920f
+            val results = frame.hitTest(nx * w, ny * h)
+            // Prefer hits inside a detected plane; fall back to any hit.
+            val preferred = results.firstOrNull { hr ->
+                val t = hr.trackable
+                (t is Plane && t.isPoseInPolygon(hr.hitPose)) ||
+                    t is Point ||
+                    t.javaClass.simpleName == "DepthPoint"
+            } ?: results.firstOrNull() ?: return null
+
+            val id = "anchor-${System.nanoTime()}"
+            val anchor = preferred.createAnchor()
+            anchors[id] = anchor
+            poseToMap(anchor.pose, id)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Project an anchor (by id) — or a static world pose — into normalized
+     * screen coords [0..1]. Returns visible=false when behind camera or not
+     * currently tracked.
+     */
+    private fun projectToScreen(map: Map<*, *>?): Map<String, Any>? {
+        if (map == null) return null
+        val frame = lastFrame ?: return null
+        val camera = frame.camera
+        if (camera.trackingState != TrackingState.TRACKING) {
+            return mapOf("visible" to false)
+        }
+
+        val pose = (map["id"] as? String)?.let { id ->
+            anchors[id]?.let { if (it.trackingState == TrackingState.TRACKING) it.pose else null }
+        } ?: run {
+            val tx = (map["tx"] as Number).toFloat()
+            val ty = (map["ty"] as Number).toFloat()
+            val tz = (map["tz"] as Number).toFloat()
+            Pose.makeTranslation(tx, ty, tz)
+        }
+
+        val proj = FloatArray(16); camera.getProjectionMatrix(proj, 0, 0.1f, 100.0f)
+        val view = FloatArray(16); camera.getViewMatrix(view, 0)
+        val world = floatArrayOf(pose.tx(), pose.ty(), pose.tz(), 1f)
+        val viewSpace = multiplyMV(view, world)
+        // viewSpace.z < 0 means in front of camera in OpenGL convention
+        val inFront = viewSpace[2] < 0
+        val clip = multiplyMV(proj, viewSpace)
+        if (clip[3] == 0f) return mapOf("visible" to false)
+        val ndcX = clip[0] / clip[3]
+        val ndcY = clip[1] / clip[3]
+        val visibleNdc = ndcX in -1f..1f && ndcY in -1f..1f && inFront
+        return mapOf(
+            "visible" to visibleNdc,
+            "sx" to (ndcX * 0.5f + 0.5f),
+            "sy" to (1f - (ndcY * 0.5f + 0.5f))
+        )
+    }
+
+    private fun anchorState(id: String?): Map<String, Any> {
+        val a = id?.let { anchors[it] }
+        val state = a?.trackingState?.name ?: "NONE"
+        return mapOf("state" to state, "exists" to (a != null))
+    }
+
+    // ── Flash (torch) ─────────────────────────────────────────────────
+    // ARCore ≥1.40 supports Config.FlashMode.TORCH which lets the session
+    // own the camera *and* drive the torch. Reconfigure the session in place.
+
+    private fun setFlashTorch(on: Boolean) {
+        flashOn = on
+        val s = session ?: return
+        try {
+            val cfg = s.config
+            cfg.flashMode = if (on) Config.FlashMode.TORCH else Config.FlashMode.OFF
+            s.configure(cfg)
+        } catch (_: Throwable) {
+            // Older ARCore versions may not expose FlashMode — flash will
+            // still work via the camera plugin path on those devices.
+        }
+    }
+
+    // ── Depth sampling ────────────────────────────────────────────────
+
     private fun startDepthSampling() {
-        if (!depthSupported) return
+        samplingRunnable?.let { handler.removeCallbacks(it) }
         val tick = object : Runnable {
             override fun run() {
-                val s = session ?: return
-                try {
-                    val frame: Frame = s.update()
-                    val depth = frame.acquireDepthImage16Bits()
-                    val plane = depth.planes[0]
-                    val width = depth.width
-                    val height = depth.height
-                    val centerX = width / 2
-                    val centerY = height / 2
-                    val rowStride = plane.rowStride
-                    val pixelStride = plane.pixelStride
-                    val buf = plane.buffer
-                    val offset = centerY * rowStride + centerX * pixelStride
-                    val mm = (buf.order(ByteOrder.nativeOrder())
-                        .getShort(offset).toInt() and 0xFFFF)
-                    depth.close()
-                    val cm = mm / 10.0
-                    distanceSink?.success(
-                        mapOf("cm" to cm, "estimated" to false)
-                    )
-                } catch (e: Throwable) {
-                    distanceSink?.success(
-                        mapOf("cm" to Double.NaN, "estimated" to true)
-                    )
+                val frame = lastFrame
+                if (frame != null) {
+                    var cm: Double = Double.NaN
+                    var depthEstimated = true
+                    if (depthSupported) {
+                        try {
+                            val depth = frame.acquireDepthImage16Bits()
+                            val plane = depth.planes[0]
+                            val width = depth.width
+                            val height = depth.height
+                            val cx = width / 2
+                            val cy = height / 2
+                            val rowStride = plane.rowStride
+                            val pixelStride = plane.pixelStride
+                            val buf = plane.buffer
+                            val offset = cy * rowStride + cx * pixelStride
+                            val mm = (buf.order(ByteOrder.nativeOrder())
+                                .getShort(offset).toInt() and 0xFFFF)
+                            depth.close()
+                            cm = mm / 10.0
+                            depthEstimated = false
+                        } catch (_: Throwable) {
+                            cm = Double.NaN
+                            depthEstimated = true
+                        }
+                    }
+                    // Pixel intensity ∈ [0,1]; multiply by 255 so the Dart
+                    // brightness scoring (0–255 mean Y) stays unchanged.
+                    val pixelIntensity = try {
+                        frame.lightEstimate?.pixelIntensity ?: -1f
+                    } catch (_: Throwable) { -1f }
+                    val brightness255 = if (pixelIntensity >= 0f) {
+                        (pixelIntensity * 255f).toDouble()
+                    } else Double.NaN
+                    val tracking = try {
+                        frame.camera.trackingState.name
+                    } catch (_: Throwable) { "STOPPED" }
+
+                    distanceSink?.success(mapOf(
+                        "cm" to cm,
+                        "estimated" to depthEstimated,
+                        "brightness" to brightness255,
+                        "tracking" to tracking
+                    ))
                 }
                 handler.postDelayed(this, sampleRateMs)
             }
         }
         samplingRunnable = tick
-        handler.post(tick)
+        handler.postDelayed(tick, sampleRateMs)
     }
 
-    private fun hitTest(nx: Float, ny: Float): Map<String, Any>? {
-        val s = session ?: return null
-        return try {
-            val frame = s.update()
-            val w = displayWidth.toFloat().takeIf { it > 0 } ?: 1080f
-            val h = displayHeight.toFloat().takeIf { it > 0 } ?: 1920f
-            val results = frame.hitTest(nx * w, ny * h)
-            val hit = results.firstOrNull() ?: return null
-            poseToMap(hit.hitPose, "hit-${System.nanoTime()}")
-        } catch (e: Throwable) {
-            null
-        }
-    }
-
-    private fun projectToScreen(map: Map<*, *>?): Map<String, Any>? {
-        val s = session ?: return null
-        if (map == null) return null
-        return try {
-            val frame = s.update()
-            val camera = frame.camera
-            val proj = FloatArray(16)
-            val view = FloatArray(16)
-            camera.getProjectionMatrix(proj, 0, 0.1f, 100.0f)
-            camera.getViewMatrix(view, 0)
-            val tx = (map["tx"] as Number).toFloat()
-            val ty = (map["ty"] as Number).toFloat()
-            val tz = (map["tz"] as Number).toFloat()
-            val world = floatArrayOf(tx, ty, tz, 1f)
-            val viewSpace = multiplyMV(view, world)
-            val clip = multiplyMV(proj, viewSpace)
-            if (clip[3] == 0f) return mapOf("visible" to false)
-            val ndcX = clip[0] / clip[3]
-            val ndcY = clip[1] / clip[3]
-            val ndcZ = clip[2] / clip[3]
-            val visible = ndcZ in -1f..1f
-            mapOf(
-                "visible" to visible,
-                "sx" to (ndcX * 0.5f + 0.5f),
-                "sy" to (1f - (ndcY * 0.5f + 0.5f))
-            )
-        } catch (e: Throwable) {
-            null
-        }
-    }
+    // ── Frame capture (used as fallback when camera plugin isn't present) ──
 
     private fun captureFrame(): ByteArray? {
-        val s = session ?: return null
+        val frame = lastFrame ?: return null
         return try {
-            val frame = s.update()
             val image = frame.acquireCameraImage()
-            
-            // Convert YUV_420_888 to NV21 for JPEG compression
             val yBuffer = image.planes[0].buffer
             val uBuffer = image.planes[1].buffer
             val vBuffer = image.planes[2].buffer
-
             val ySize = yBuffer.remaining()
             val uSize = uBuffer.remaining()
             val vSize = vBuffer.remaining()
-
             val nv21 = ByteArray(ySize + uSize + vSize)
-
             yBuffer.get(nv21, 0, ySize)
             vBuffer.get(nv21, ySize, vSize)
             uBuffer.get(nv21, ySize + vSize, uSize)
-
             val width = image.width
             val height = image.height
             image.close()
-
             val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
             val out = ByteArrayOutputStream()
             yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, out)
             out.toByteArray()
-        } catch (e: Throwable) {
+        } catch (_: Throwable) {
             null
         }
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────
 
     private fun poseToMap(pose: Pose, id: String): Map<String, Any> {
         val t = FloatArray(3); pose.getTranslation(t, 0)

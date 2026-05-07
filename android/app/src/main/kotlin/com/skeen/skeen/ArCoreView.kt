@@ -5,8 +5,6 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.view.View
-import com.google.ar.core.Frame
-import com.google.ar.core.Session
 import io.flutter.plugin.platform.PlatformView
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -14,10 +12,19 @@ import java.nio.FloatBuffer
 import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 
+/**
+ * GLSurfaceView-based [PlatformView] that hosts the ARCore camera feed.
+ *
+ * Owns the OES texture used by ARCore as the camera image target. The
+ * renderer drives [SkeenArPlugin.updateSession] each frame on the GL thread
+ * — this is the *only* place where [com.google.ar.core.Session.update] is
+ * invoked, so all hit-test / projection callers can read the cached frame
+ * from any thread.
+ */
 class ArCoreView(
     context: Context,
-    id: Int,
-    creationParams: Map<String?, Any?>?,
+    @Suppress("UNUSED_PARAMETER") id: Int,
+    @Suppress("UNUSED_PARAMETER") creationParams: Map<String?, Any?>?,
     private val plugin: SkeenArPlugin
 ) : PlatformView, GLSurfaceView.Renderer {
 
@@ -25,12 +32,11 @@ class ArCoreView(
     private var textureId = -1
     private var isGlInitialized = false
 
-    // Simple quad for background rendering
     private val quadCoords = floatArrayOf(
         -1.0f, -1.0f,
-        -1.0f,  1.0f,
-         1.0f, -1.0f,
-         1.0f,  1.0f
+        -1.0f, 1.0f,
+        1.0f, -1.0f,
+        1.0f, 1.0f
     )
     private val quadTexCoords = floatArrayOf(
         0.0f, 1.0f,
@@ -38,7 +44,7 @@ class ArCoreView(
         1.0f, 1.0f,
         1.0f, 0.0f
     )
-    
+
     private lateinit var vertexBuffer: FloatBuffer
     private lateinit var texBuffer: FloatBuffer
     private var shaderProgram = 0
@@ -47,39 +53,33 @@ class ArCoreView(
 
     init {
         glView.setEGLContextClientVersion(2)
+        glView.preserveEGLContextOnPause = true
         glView.setRenderer(this)
         glView.renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
-        
-        // Setup buffers
+
         val bb = ByteBuffer.allocateDirect(quadCoords.size * 4)
-        bb.order(ByteOrder.nativeOrder())
-        vertexBuffer = bb.asFloatBuffer().apply {
-            put(quadCoords)
-            position(0)
-        }
-        
+            .order(ByteOrder.nativeOrder())
+        vertexBuffer = bb.asFloatBuffer().apply { put(quadCoords); position(0) }
+
         val tb = ByteBuffer.allocateDirect(quadTexCoords.size * 4)
-        tb.order(ByteOrder.nativeOrder())
-        texBuffer = tb.asFloatBuffer().apply {
-            put(quadTexCoords)
-            position(0)
-        }
+            .order(ByteOrder.nativeOrder())
+        texBuffer = tb.asFloatBuffer().apply { put(quadTexCoords); position(0) }
     }
 
     override fun getView(): View = glView
 
     override fun dispose() {
-        // Nothing special to dispose here; plugin handles session
+        // Plugin owns Session lifecycle; nothing to release here.
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        GLES20.glClearColor(0f, 0f, 0f, 1f)
+
         val textures = IntArray(1)
         GLES20.glGenTextures(1, textures, 0)
         textureId = textures[0]
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
-        
-        // OES texture params
-        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_NEAREST)
+        GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR)
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
         GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
@@ -104,19 +104,18 @@ class ArCoreView(
             }
         """.trimIndent()
 
-        val vertexShader = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderSource)
-        val fragmentShader = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
-
+        val vs = loadShader(GLES20.GL_VERTEX_SHADER, vertexShaderSource)
+        val fs = loadShader(GLES20.GL_FRAGMENT_SHADER, fragmentShaderSource)
         shaderProgram = GLES20.glCreateProgram().also {
-            GLES20.glAttachShader(it, vertexShader)
-            GLES20.glAttachShader(it, fragmentShader)
+            GLES20.glAttachShader(it, vs)
+            GLES20.glAttachShader(it, fs)
             GLES20.glLinkProgram(it)
         }
-
         posAttrib = GLES20.glGetAttribLocation(shaderProgram, "a_Position")
         texAttrib = GLES20.glGetAttribLocation(shaderProgram, "a_TexCoord")
 
-        // Bind the session to this texture
+        // Bind the OES texture to ARCore. resume() is called inside the
+        // plugin once both texture and session are ready.
         plugin.setCameraTextureName(textureId)
         isGlInitialized = true
     }
@@ -128,12 +127,10 @@ class ArCoreView(
 
     override fun onDrawFrame(gl: GL10?) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
-        
         if (!isGlInitialized) return
-        
-        // Let ARCore update and draw the camera feed into the OES texture
+
         val frame = plugin.updateSession() ?: return
-        
+
         GLES20.glUseProgram(shaderProgram)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
 
@@ -141,28 +138,28 @@ class ArCoreView(
         GLES20.glVertexAttribPointer(posAttrib, 2, GLES20.GL_FLOAT, false, 8, vertexBuffer)
 
         GLES20.glEnableVertexAttribArray(texAttrib)
-        
-        // Transform coordinates based on display rotation (done inside plugin)
         val transformedTexCoords = plugin.getTransformedTexCoords(quadTexCoords)
         val transformedBuffer = ByteBuffer.allocateDirect(transformedTexCoords.size * 4)
             .order(ByteOrder.nativeOrder())
             .asFloatBuffer()
-            .apply {
-                put(transformedTexCoords)
-                position(0)
-            }
-            
+            .apply { put(transformedTexCoords); position(0) }
         GLES20.glVertexAttribPointer(texAttrib, 2, GLES20.GL_FLOAT, false, 8, transformedBuffer)
 
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
 
         GLES20.glDisableVertexAttribArray(posAttrib)
         GLES20.glDisableVertexAttribArray(texAttrib)
+
+        // Suppress unused warning for the precomputed identity buffer; kept
+        // for parity with ARCore samples that may switch to it under
+        // unchanged display geometry.
+        @Suppress("UnusedExpression") texBuffer
+        @Suppress("UnusedExpression") frame
     }
 
-    private fun loadShader(type: Int, shaderCode: String): Int {
+    private fun loadShader(type: Int, code: String): Int {
         return GLES20.glCreateShader(type).also { shader ->
-            GLES20.glShaderSource(shader, shaderCode)
+            GLES20.glShaderSource(shader, code)
             GLES20.glCompileShader(shader)
         }
     }

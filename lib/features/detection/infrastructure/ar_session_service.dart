@@ -28,6 +28,12 @@ class ArSessionService implements ArSessionPort {
   StreamSubscription<dynamic>? _distanceSub;
   final StreamController<CaptureDistance> _distanceController =
       StreamController<CaptureDistance>.broadcast();
+  final StreamController<ArFrameInfo> _frameInfoController =
+      StreamController<ArFrameInfo>.broadcast();
+
+  /// Per-frame brightness (0–255 to match camera-plugin Y-mean scale) and
+  /// tracking state from the native AR session, sampled ~10 Hz.
+  Stream<ArFrameInfo> get frameInfo => _frameInfoController.stream;
 
   bool get _isPlatformSupported {
     if (kIsWeb) return false;
@@ -178,6 +184,18 @@ class ArSessionService implements ArSessionPort {
       } else {
         _distanceController.add(CaptureDistance.cm(cm));
       }
+
+      final brightness = (event['brightness'] as num?)?.toDouble();
+      final tracking = event['tracking'] as String?;
+      if (!_frameInfoController.isClosed &&
+          (brightness != null || tracking != null)) {
+        _frameInfoController.add(ArFrameInfo(
+          brightness: (brightness == null || brightness.isNaN)
+              ? null
+              : brightness,
+          tracking: tracking ?? 'UNKNOWN',
+        ));
+      }
     }
   }
 
@@ -189,5 +207,22 @@ class ArSessionService implements ArSessionPort {
   Future<void> dispose() async {
     await stop();
     await _distanceController.close();
+    await _frameInfoController.close();
   }
+}
+
+/// Live AR frame metadata used by the readiness gate when the camera
+/// plugin's image stream isn't available (i.e. the AR session owns the
+/// camera, as is the case on Android ARCore and iOS ARKit).
+class ArFrameInfo {
+  const ArFrameInfo({required this.brightness, required this.tracking});
+
+  /// Mean brightness in the 0–255 scale, or null if the frame had no light
+  /// estimate yet.
+  final double? brightness;
+
+  /// `"TRACKING"`, `"PAUSED"`, `"STOPPED"`, or `"UNKNOWN"`.
+  final String tracking;
+
+  bool get isTracking => tracking == 'TRACKING';
 }

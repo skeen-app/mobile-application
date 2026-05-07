@@ -19,6 +19,7 @@ import 'providers.dart';
 /// juggling several booleans.
 enum DetectionPhase {
   initializing,
+  mapping,
   ready,
   capturing,
   standardizing,
@@ -133,7 +134,9 @@ class DetectionController extends StateNotifier<DetectionState> {
         if (!mounted) return;
         state = state.copyWith(distance: d);
       });
-      state = state.copyWith(phase: DetectionPhase.ready, clearError: true);
+      // Enter the scene-mapping phase first; the screen will call
+      // [completeMapping] once tracking + readiness gate has passed.
+      state = state.copyWith(phase: DetectionPhase.mapping, clearError: true);
     } catch (e, st) {
       if (kDebugMode) debugPrint('Detection bootstrap failed: $e\n$st');
       state = state.copyWith(
@@ -171,6 +174,28 @@ class DetectionController extends StateNotifier<DetectionState> {
     state = state.copyWith(readiness: readiness);
   }
 
+  /// Advance from the AR scene-mapping phase to ready, unlocking capture.
+  /// Called by the AR screen once tracking has stabilized and the readiness
+  /// gate (lighting / focus / distance) passes.
+  void completeMapping() {
+    if (!mounted) return;
+    if (state.phase != DetectionPhase.mapping) return;
+    state = state.copyWith(phase: DetectionPhase.ready);
+  }
+
+  /// Restart the scene-mapping phase. Called when the user taps "Scan again"
+  /// so the AR overlay re-walks the assistive hints before each capture.
+  Future<void> restartMapping() async {
+    await _camera.restartSampling();
+    await _camera.unlockExposure();
+    if (!mounted) return;
+    state = state.copyWith(
+      phase: DetectionPhase.mapping,
+      clearResult: true,
+      clearError: true,
+    );
+  }
+
   /// The full capture-classify-persist pipeline.
   ///
   /// Flow: ready → capturing → standardizing → analyzing → presented
@@ -182,18 +207,25 @@ class DetectionController extends StateNotifier<DetectionState> {
     required Size previewSize,
   }) async {
     if (state.phase != DetectionPhase.ready) return;
+    // Ensure any leftover anchor from a previous capture is cleared.
     state = state.copyWith(phase: DetectionPhase.capturing, clearResult: true);
 
     try {
-      // Lock AE/AF for stable exposure during capture
+      // Lock AE/AF for stable exposure during capture (camera plugin path).
+      // No-op when the camera plugin isn't initialized (AR-only path).
       await _camera.lockExposure();
 
-      // Phase: standardizing — capture + center-crop to 1:1
+      // Phase: standardizing — try AR session capture first (ARCore /
+      // ARKit own the camera in this flow); fall back to the camera
+      // plugin when AR isn't active.
       state = state.copyWith(phase: DetectionPhase.standardizing);
-      final bytes = await _camera.captureStandardized();
-      // captureStandardized() auto-restarts the image stream internally
+      Uint8List? bytes;
+      if (_camera.isReady) {
+        bytes = await _camera.captureStandardized();
+      } else {
+        bytes = await _session.captureFrame();
+      }
 
-      // Unlock AE/AF so readiness stream sees live updates again
       await _camera.unlockExposure();
 
       if (bytes == null || !mounted) {

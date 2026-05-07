@@ -216,6 +216,47 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                   ),
                 ArReticleOverlay(quality: _quality),
 
+                // Subtle disclaimer: AR is not available on this device.
+                Positioned(
+                  top: 12,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        border: Border.all(
+                          color: AppColors.violetaOscuro.withValues(alpha: 0.6),
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 12,
+                            color: AppColors.hintText,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            'AR not supported on this device',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontWeight: FontWeight.w500,
+                              fontSize: 10.5,
+                              letterSpacing: 0.1,
+                              color: AppColors.hintText,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
                 // Floating diagnosis label (centered, no AR anchor)
                 if (detection.result != null)
                   Center(
