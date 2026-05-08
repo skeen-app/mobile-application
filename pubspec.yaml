@@ -60,6 +60,11 @@ dependencies:
   # Open article links in the platform browser (Insights feed).
   url_launcher: ^6.3.1
 
+  # Local OS notifications — drives the Reminders alarm-like behaviour.
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  flutter_timezone: ^4.0.0
+
   # ── Detection context: AR-AI bridge ─────────────────────────────
   # On-device classification (EfficientNetB0 → 5 lesion classes)
   tflite_flutter: ^0.11.0

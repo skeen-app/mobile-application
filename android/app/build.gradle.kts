@@ -13,6 +13,9 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by `flutter_local_notifications` for backports of
+        // java.time on API < 26.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -45,6 +48,8 @@ dependencies {
     implementation("com.google.ar:core:1.45.0")
     // Co-routines for the depth sampling loop.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // Java 8+ APIs back-ported for `flutter_local_notifications` on API <26.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

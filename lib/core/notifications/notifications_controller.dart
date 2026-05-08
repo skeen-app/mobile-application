@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../features/auth/application/auth_controller.dart'
     show sharedPreferencesProvider;
+import '../../features/reminders/domain/reminder.dart';
 import 'notification_entity.dart';
 import 'notifications_storage.dart';
 
@@ -141,6 +142,25 @@ class NotificationsController extends StateNotifier<NotificationsState> {
       type: NotificationType.reminderCheckup,
       title: 'Checkup reminder set',
       subtitle: 'You will be nudged to scan around this date.',
+    );
+  }
+
+  /// Surfaced when a scheduled reminder actually *fires* (post-reconcile
+  /// at app boot, or via the OS notification-tap callback). Distinct copy
+  /// from "reminder set" so the activity log reads as a real event.
+  void recordReminderFired({required Reminder reminder}) {
+    final title = switch (reminder.type) {
+      ReminderType.newScan => 'Time to scan a new mole',
+      ReminderType.rescan => 'Time to re-scan your mole',
+      ReminderType.selfExamination => 'Time for a self-examination',
+    };
+    _push(
+      type: NotificationType.reminderCheckup,
+      title: title,
+      subtitle: reminder.note,
+      payload: {
+        if (reminder.scanId != null) 'scanId': reminder.scanId!,
+      },
     );
   }
 

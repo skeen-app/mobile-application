@@ -10,6 +10,7 @@ import 'features/detection/application/detection_controller.dart';
 import 'features/detection/application/sync_orchestrator.dart';
 import 'features/patient/application/lesion_summary_providers.dart';
 import 'features/patient/application/scan_history_providers.dart';
+import 'features/reminders/application/reminders_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,8 +53,14 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
     // Fire-and-forget: kick the offline sync after the first frame so
     // the splash isn't blocked. The orchestrator no-ops when the user
     // has no session yet — it'll re-run on auth + on resume.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(syncOrchestratorProvider).start();
+      // Initialise the OS notification plugin so any scheduled
+      // reminder fires even when the app is closed. Reading the
+      // controller provider also triggers reconciliation of past-due
+      // reminders into the activity log.
+      await ref.read(localNotificationServiceProvider).initialize();
+      ref.read(remindersControllerProvider);
     });
   }
 
