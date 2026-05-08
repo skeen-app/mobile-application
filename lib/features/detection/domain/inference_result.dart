@@ -42,11 +42,22 @@ class InferenceResult {
         'topLabel': topLabel.slug,
         'confidence': confidence,
         'scores': scores,
+        if (lesionCentroid != null)
+          'centroid': {'x': lesionCentroid!.dx, 'y': lesionCentroid!.dy},
       };
 
   factory InferenceResult.fromJson(Map<String, dynamic> json) {
     final raw = (json['scores'] as List).cast<num>();
-    return InferenceResult(scores: raw.map((n) => n.toDouble()).toList());
+    final centroid = json['centroid'] as Map?;
+    return InferenceResult(
+      scores: raw.map((n) => n.toDouble()).toList(),
+      lesionCentroid: centroid == null
+          ? null
+          : Offset(
+              (centroid['x'] as num).toDouble(),
+              (centroid['y'] as num).toDouble(),
+            ),
+    );
   }
 
   static int _argmaxIndex(List<double> scores) {

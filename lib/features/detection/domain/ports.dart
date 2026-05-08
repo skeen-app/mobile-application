@@ -111,6 +111,12 @@ abstract class LesionRepositoryPort {
   Future<LesionAnalysis?> findById(String id, {bool includeImage = false});
   Future<void> delete(String id);
 
+  /// Patches the body region on an already-saved analysis. The body
+  /// region picker fires post-capture, so the row needs an in-place
+  /// update instead of a full re-save. Re-flips ``pendingUpload`` to
+  /// ``true`` so the next sync uploads the updated value.
+  Future<void> updateBodyRegion(String id, String? bodyRegion);
+
   /// Records pending cloud upload (future feature). Schema-ready.
   Future<List<LesionAnalysis>> findPendingUpload();
   Future<void> markUploaded(String id);

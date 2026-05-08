@@ -11,8 +11,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../patient/application/lesion_summary_providers.dart';
+import '../../../patient/application/scan_history_providers.dart';
 import '../../application/detection_controller.dart';
 import '../../application/providers.dart';
+import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/ar_session_service.dart';
@@ -268,6 +271,17 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
       return;
     }
     final region = await BodyRegionPicker.show(context);
+    if (!mounted) return;
+    if (region != null) {
+      // Persist the freshly picked region on the already-saved scan +
+      // re-flip pending_upload so the orchestrator re-syncs.
+      await ref
+          .read(lesionRepositoryProvider)
+          .updateBodyRegion(state.savedAnalysisId!, region);
+      ref.invalidate(scanHistoryProvider);
+      ref.invalidate(lesionSummariesProvider);
+      ref.read(syncOrchestratorProvider).syncNow(reason: 'region-picked');
+    }
     if (!mounted) return;
     context.pushNamed(
       'triage-result',

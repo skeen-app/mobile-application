@@ -185,6 +185,40 @@ class SecureLesionRepository implements LesionRepositoryPort {
     );
   }
 
+  @override
+  Future<void> updateBodyRegion(String id, String? bodyRegion) async {
+    final db = _requireDb();
+    final rows = await db.query(_table, where: 'id = ?', whereArgs: [id]);
+    if (rows.isEmpty) return;
+    final row = rows.first;
+
+    // Decrypt the encrypted blob, mutate the body-region key, re-encrypt
+    // with a fresh IV. We can't just patch a column because bodyRegion
+    // lives inside the AES-256 payload alongside the rest of the
+    // metadata.
+    final iv = enc.IV.fromBase64(row['payload_iv'] as String);
+    final cipher = enc.Encrypted.fromBase64(row['payload_cipher'] as String);
+    final json = _encrypter!.decrypt(cipher, iv: iv);
+    final payload = jsonDecode(json) as Map<String, dynamic>;
+    payload['bodyRegion'] = bodyRegion;
+    final newIv = enc.IV.fromSecureRandom(16);
+    final reencrypted = _encrypter!.encrypt(jsonEncode(payload), iv: newIv);
+
+    await db.update(
+      _table,
+      {
+        'payload_iv': newIv.base64,
+        'payload_cipher': reencrypted.base64,
+        // Re-flip pending_upload so the orchestrator re-syncs the doc
+        // with the freshly-picked region. The backend uses ``set(merge)``
+        // so the existing record is patched, not replaced.
+        'pending_upload': 1,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   LesionAnalysis _rowToAnalysis(Map<String, Object?> row,
       {required bool includeImage}) {
     final iv = enc.IV.fromBase64(row['payload_iv'] as String);

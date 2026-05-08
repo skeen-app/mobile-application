@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../application/scan_thumbnail_provider.dart';
 import '../../domain/risk_level.dart';
 import '../../domain/scan_history_entry.dart';
 import 'body_part_icon.dart';
@@ -122,27 +124,58 @@ class ScanHistoryCard extends StatelessWidget {
   }
 }
 
-class _Thumbnail extends StatelessWidget {
+/// Crops + decrypts the saved scan locally so the history miniature
+/// shows the actual lunar (centroid-cropped). Falls back, in order:
+///   1. Cropped mole thumbnail from the local encrypted store.
+///   2. Cloud signed-URL thumbnail (full image, when only the cloud
+///      copy is available — e.g. signed in on a fresh device).
+///   3. Tinted placeholder with the body-part icon.
+class _Thumbnail extends ConsumerWidget {
   const _Thumbnail({required this.entry});
   final ScanHistoryEntry entry;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cropped = ref.watch(scanThumbnailProvider(entry.id));
+    final remoteUrl = entry.thumbnailUrl;
+
+    Widget child;
+    if (cropped.value != null) {
+      child = Image.memory(
+        cropped.value!,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+      );
+    } else if (cropped.isLoading) {
+      child = remoteUrl != null && remoteUrl.isNotEmpty
+          ? Image.network(
+              remoteUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _Placeholder(entry: entry),
+            )
+          : _Placeholder(entry: entry);
+    } else if (remoteUrl != null && remoteUrl.isNotEmpty) {
+      child = Image.network(
+        remoteUrl,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _Placeholder(entry: entry),
+      );
+    } else {
+      child = _Placeholder(entry: entry);
+    }
+
     return Container(
       width: 64,
       height: 64,
       decoration: BoxDecoration(
         color: ScanHistoryCard._thumbBg,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: entry.region.group.accent.withValues(alpha: 0.25),
+        ),
       ),
       clipBehavior: Clip.antiAlias,
-      child: entry.thumbnailUrl != null && entry.thumbnailUrl!.isNotEmpty
-          ? Image.network(
-              entry.thumbnailUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (context, _, _) => _Placeholder(entry: entry),
-            )
-          : _Placeholder(entry: entry),
+      child: child,
     );
   }
 }

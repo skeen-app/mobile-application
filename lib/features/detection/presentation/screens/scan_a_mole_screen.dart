@@ -8,9 +8,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../patient/application/lesion_summary_providers.dart';
+import '../../../patient/application/scan_history_providers.dart';
 import '../../application/detection_controller.dart';
 import '../../application/providers.dart';
 import '../../application/readiness_evaluator.dart';
+import '../../application/sync_orchestrator.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/ar_reticle_overlay.dart';
@@ -125,6 +128,15 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       return;
     }
     final region = await BodyRegionPicker.show(context);
+    if (!mounted) return;
+    if (region != null) {
+      await ref
+          .read(lesionRepositoryProvider)
+          .updateBodyRegion(state.savedAnalysisId!, region);
+      ref.invalidate(scanHistoryProvider);
+      ref.invalidate(lesionSummariesProvider);
+      ref.read(syncOrchestratorProvider).syncNow(reason: 'region-picked');
+    }
     if (!mounted) return;
     context.pushNamed(
       'triage-result',
