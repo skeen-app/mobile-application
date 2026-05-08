@@ -108,6 +108,26 @@ class SyncOrchestrator {
           notifications?.recordScanSyncedToCloud(scanId: analysis.id);
         }
       }
+
+      // Drain any rows the user marked for deletion while offline. Each
+      // iteration either fully removes the row (on success / 404) or
+      // leaves it queued for the next run.
+      final pendingDeletionIds = await repository.findPendingDeletionIds();
+      for (final id in pendingDeletionIds) {
+        try {
+          final ok = await api.deleteScan(token: token, scanId: id);
+          if (ok) {
+            await repository.delete(id);
+            AppLogger.info('SyncOrchestrator: drained delete for $id',
+                tag: 'Sync');
+          }
+        } catch (e) {
+          AppLogger.warning(
+            'SyncOrchestrator: pending delete failed for $id — $e',
+            tag: 'Sync',
+          );
+        }
+      }
     } catch (e, st) {
       AppLogger.error('SyncOrchestrator: run failed', tag: 'Sync', error: e, stackTrace: st);
     } finally {

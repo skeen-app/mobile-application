@@ -32,8 +32,21 @@ class HttpScanHistoryRepository implements ScanHistoryRepository {
 
   @override
   Future<List<ScanHistoryEntry>> findAll() async {
-    final remote = await _fetchRemote();
-    final pending = await _fetchLocalPending(excludingRemoteIds: remote.map((s) => s.id).toSet());
+    if (localRepository is SecureLesionRepository) {
+      await (localRepository as SecureLesionRepository).initialize();
+    }
+    // Locally queued deletions must vanish from the UI immediately even
+    // though the cloud copy is still around — otherwise the row would
+    // reappear after every refresh until the orchestrator drains.
+    final pendingDeletion =
+        (await localRepository.findPendingDeletionIds()).toSet();
+
+    final remote = (await _fetchRemote())
+        .where((s) => !pendingDeletion.contains(s.id))
+        .toList();
+    final pending = await _fetchLocalPending(
+      excludingRemoteIds: remote.map((s) => s.id).toSet(),
+    );
     final all = <ScanHistoryEntry>[
       ...remote.map(_remoteToEntry),
       ...pending.map(_localToEntry),

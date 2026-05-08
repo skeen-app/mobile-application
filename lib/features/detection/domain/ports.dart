@@ -120,4 +120,16 @@ abstract class LesionRepositoryPort {
   /// Records pending cloud upload (future feature). Schema-ready.
   Future<List<LesionAnalysis>> findPendingUpload();
   Future<void> markUploaded(String id);
+
+  /// Flips the row to "queued for cloud deletion". Used when the user
+  /// asks to delete an already-uploaded scan but the device is offline:
+  /// the row is hidden from the UI immediately and the orchestrator
+  /// retries the cloud delete on the next connectivity event.
+  Future<void> markPendingDeletion(String id);
+
+  /// Ids of rows currently in pending-deletion limbo. Two consumers:
+  ///  - The history repository excludes them from remote results so
+  ///    they don't reappear while waiting for the backend ack.
+  ///  - The sync orchestrator drains them via DELETE on each run.
+  Future<List<String>> findPendingDeletionIds();
 }

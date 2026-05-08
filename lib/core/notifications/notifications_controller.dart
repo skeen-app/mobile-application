@@ -127,6 +127,20 @@ class NotificationsController extends StateNotifier<NotificationsState> {
     );
   }
 
+  void recordScanDeleted({String? bodyRegion, bool pendingCloudDelete = false}) {
+    _push(
+      type: NotificationType.scanSyncedToCloud,
+      title: pendingCloudDelete
+          ? 'Scan deletion queued'
+          : 'Scan deleted',
+      subtitle: pendingCloudDelete
+          ? 'The cloud copy will be removed once you are back online.'
+          : (bodyRegion == null
+              ? 'The scan was permanently removed.'
+              : 'Removed the lesion on your $bodyRegion.'),
+    );
+  }
+
   /// Reserved for the OTA pipeline — wired but not currently triggered.
   /// Surface it from the OTA orchestration layer when it lands.
   void recordModelUpdateInstalled({required String version}) {

@@ -24,7 +24,14 @@ class LesionSummaryRepository {
   final String patientId;
 
   Future<List<LesionSummary>> findAll() async {
-    final remote = await _fetchRemote();
+    if (localRepository is SecureLesionRepository) {
+      await (localRepository as SecureLesionRepository).initialize();
+    }
+    final pendingDeletion =
+        (await localRepository.findPendingDeletionIds()).toSet();
+    final remote = (await _fetchRemote())
+        .where((s) => !pendingDeletion.contains(s.id))
+        .toList();
     final pending = await _fetchLocalPending(
       excludingRemoteIds: remote.map((s) => s.id).toSet(),
     );

@@ -120,13 +120,43 @@ class ScansApi {
     );
   }
 
+  /// Returns ``true`` when the row no longer exists upstream (200 deleted
+  /// or 404 already gone — we treat both as success since the goal is
+  /// idempotent removal). Throws on network / 5xx so the caller can
+  /// queue a retry.
   Future<bool> deleteScan({
     required String token,
     required String scanId,
   }) async {
-    final res = await _send('DELETE', '/scans/$scanId', token: token);
-    final json = _decodeJson(res);
-    return json['deleted'] as bool? ?? false;
+    final uri = ApiConfig.uri('/scans/$scanId');
+    final headers = {
+      ...ApiConfig.jsonHeaders,
+      'Authorization': 'Bearer $token',
+    };
+    final http.Response res;
+    try {
+      res = await _client
+          .delete(uri, headers: headers)
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const ApiException(statusCode: 0, message: 'Request timed out');
+    } catch (e) {
+      throw ApiException(statusCode: 0, message: 'Network error: $e');
+    }
+    if (res.statusCode == 404) return true;
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      try {
+        final json = _decodeJson(res);
+        return json['deleted'] as bool? ?? true;
+      } catch (_) {
+        return true;
+      }
+    }
+    throw ApiException(
+      statusCode: res.statusCode,
+      message: 'HTTP ${res.statusCode}',
+      body: res.body,
+    );
   }
 
   // ── Mappers from local domain → wire payload ────────────────────────

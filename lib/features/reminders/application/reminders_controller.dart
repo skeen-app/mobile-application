@@ -88,6 +88,23 @@ class RemindersController extends StateNotifier<List<Reminder>> {
     await scheduler.cancel(target.notificationId);
   }
 
+  /// Cancels every reminder whose ``scanId`` matches the deleted scan.
+  /// Called from the triage delete flow so a removed lunar doesn't
+  /// leave dangling alarms that would crash on tap.
+  Future<void> removeForScan(String scanId) async {
+    final orphans = state.where((r) => r.scanId == scanId).toList();
+    if (orphans.isEmpty) return;
+    state = state.where((r) => r.scanId != scanId).toList();
+    await storage.writeAll(state);
+    for (final r in orphans) {
+      await scheduler.cancel(r.notificationId);
+    }
+    AppLogger.info(
+      'Cancelled ${orphans.length} reminder(s) tied to scan $scanId',
+      tag: 'Reminders',
+    );
+  }
+
   // ── Reconciliation ─────────────────────────────────────────────────
 
   /// Walks past-due reminders, surfaces them in the activity log and,

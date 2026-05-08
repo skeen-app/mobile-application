@@ -44,21 +44,22 @@ class SecureLesionRepository implements LesionRepositoryPort {
 
     _db = await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE $_table (
-            id              TEXT PRIMARY KEY,
-            patient_id      TEXT NOT NULL,
-            top_label       TEXT NOT NULL,
-            confidence      REAL NOT NULL,
-            captured_at     INTEGER NOT NULL,
-            payload_iv      TEXT NOT NULL,
-            payload_cipher  TEXT NOT NULL,
-            image_blob      BLOB,
-            image_iv        TEXT,
-            image_hash      TEXT,
-            pending_upload  INTEGER NOT NULL DEFAULT 0
+            id                TEXT PRIMARY KEY,
+            patient_id        TEXT NOT NULL,
+            top_label         TEXT NOT NULL,
+            confidence        REAL NOT NULL,
+            captured_at       INTEGER NOT NULL,
+            payload_iv        TEXT NOT NULL,
+            payload_cipher    TEXT NOT NULL,
+            image_blob        BLOB,
+            image_iv          TEXT,
+            image_hash        TEXT,
+            pending_upload    INTEGER NOT NULL DEFAULT 0,
+            pending_deletion  INTEGER NOT NULL DEFAULT 0
           )
         ''');
         await db.execute(
@@ -66,6 +67,9 @@ class SecureLesionRepository implements LesionRepositoryPort {
         );
         await db.execute(
           'CREATE INDEX idx_lesion_pending ON $_table(pending_upload) WHERE pending_upload = 1',
+        );
+        await db.execute(
+          'CREATE INDEX idx_lesion_pending_del ON $_table(pending_deletion) WHERE pending_deletion = 1',
         );
       },
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -83,6 +87,15 @@ class SecureLesionRepository implements LesionRepositoryPort {
             'ALTER TABLE $_table ADD COLUMN pending_upload INTEGER NOT NULL DEFAULT 0',
           );
           if (kDebugMode) debugPrint('SQLite migrated to v2 (image blob cols)');
+        }
+        if (oldVersion < 3) {
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN pending_deletion INTEGER NOT NULL DEFAULT 0',
+          );
+          await db.execute(
+            'CREATE INDEX IF NOT EXISTS idx_lesion_pending_del ON $_table(pending_deletion) WHERE pending_deletion = 1',
+          );
+          if (kDebugMode) debugPrint('SQLite migrated to v3 (pending_deletion)');
         }
       },
     );
@@ -141,7 +154,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
     final db = _requireDb();
     final rows = await db.query(
       _table,
-      where: 'patient_id = ?',
+      where: 'patient_id = ? AND pending_deletion = 0',
       whereArgs: [patientId],
       orderBy: 'captured_at DESC',
     );
@@ -168,10 +181,32 @@ class SecureLesionRepository implements LesionRepositoryPort {
     final db = _requireDb();
     final rows = await db.query(
       _table,
-      where: 'pending_upload = 1',
+      where: 'pending_upload = 1 AND pending_deletion = 0',
       orderBy: 'captured_at ASC',
     );
     return rows.map((r) => _rowToAnalysis(r, includeImage: false)).toList();
+  }
+
+  @override
+  Future<void> markPendingDeletion(String id) async {
+    final db = _requireDb();
+    await db.update(
+      _table,
+      {'pending_deletion': 1, 'pending_upload': 0},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  @override
+  Future<List<String>> findPendingDeletionIds() async {
+    final db = _requireDb();
+    final rows = await db.query(
+      _table,
+      columns: ['id'],
+      where: 'pending_deletion = 1',
+    );
+    return rows.map((r) => r['id'] as String).toList(growable: false);
   }
 
   @override

@@ -5,9 +5,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
+import '../../../../core/logger/app_logger.dart';
+import '../../../../core/network/api_exception.dart';
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../auth/application/auth_controller.dart';
+import '../../../patient/application/lesion_summary_providers.dart';
+import '../../../patient/application/scan_history_providers.dart';
+import '../../../reminders/application/reminders_controller.dart';
 import '../../application/pdf_report_service.dart';
 import '../../application/providers.dart';
+import '../../application/sync_orchestrator.dart';
 import '../../domain/class_label.dart';
 import '../../domain/inference_result.dart';
 import '../../domain/lesion_analysis.dart';
@@ -16,8 +25,6 @@ import '../widgets/quality_verified_badge.dart';
 
 /// Triage result screen — full-vertical layout that fills the viewport on
 /// most phones and falls back to scroll on smaller screens.
-///
-/// Receives [analysisId] and [capturedImageBytes] via route arguments.
 class TriageResultScreen extends ConsumerStatefulWidget {
   const TriageResultScreen({
     super.key,
@@ -38,6 +45,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
   LesionAnalysis? _analysis;
   bool _loading = true;
   bool _exporting = false;
+  bool _deleting = false;
 
   @override
   void initState() {
@@ -81,20 +89,136 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     }
   }
 
+  // ── Delete flow ─────────────────────────────────────────────────────
+
+  Future<void> _confirmAndDelete() async {
+    if (_deleting) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _DeleteConfirmDialog(
+        bodyRegion: _analysis?.bodyRegion ?? widget.bodyRegion,
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _delete();
+  }
+
+  Future<void> _delete() async {
+    setState(() => _deleting = true);
+    final scanId = widget.analysisId;
+    final analysis = _analysis;
+    final wasUploaded =
+        analysis != null && (analysis.pendingUpload == false);
+    var pendingCloudDelete = false;
+
+    final repo = ref.read(lesionRepositoryProvider);
+    await repo.initialize();
+
+    try {
+      if (wasUploaded) {
+        // The row exists in cloud — we need the API to delete the GCS
+        // blob + Firestore doc before purging local SQLite.
+        final token = ref.read(authControllerProvider).token?.value;
+        final api = ref.read(scansApiProvider);
+        if (token != null) {
+          try {
+            await api.deleteScan(token: token, scanId: scanId);
+          } on ApiException catch (e) {
+            if (e.statusCode == 0) {
+              // Network / timeout → mark for retry, hide from UI.
+              await repo.markPendingDeletion(scanId);
+              pendingCloudDelete = true;
+            } else {
+              rethrow;
+            }
+          }
+        } else {
+          // No session — queue and let the orchestrator handle on next login.
+          await repo.markPendingDeletion(scanId);
+          pendingCloudDelete = true;
+        }
+      }
+
+      if (!pendingCloudDelete) {
+        await repo.delete(scanId);
+      }
+
+      // Cancel any reminders pinned to this scan so taps don't navigate
+      // to a now-deleted detail.
+      try {
+        await ref
+            .read(remindersControllerProvider.notifier)
+            .removeForScan(scanId);
+      } catch (e) {
+        AppLogger.warning('Failed cleaning reminders: $e', tag: 'TriageDelete');
+      }
+
+      // Refresh every projection that may have shown this scan.
+      ref.invalidate(scanHistoryProvider);
+      ref.invalidate(lesionSummariesProvider);
+      ref.invalidate(pendingScanCountProvider);
+
+      ref.read(notificationsControllerProvider.notifier).recordScanDeleted(
+            bodyRegion: analysis?.bodyRegion ?? widget.bodyRegion,
+            pendingCloudDelete: pendingCloudDelete,
+          );
+
+      if (!mounted) return;
+      if (pendingCloudDelete) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Removed locally — the cloud copy will be deleted once you are online.',
+            ),
+          ),
+        );
+      }
+      if (context.canPop()) {
+        context.pop();
+      } else {
+        context.goNamed('home');
+      }
+    } catch (e, st) {
+      AppLogger.error('Delete scan failed',
+          tag: 'TriageDelete', error: e, stackTrace: st);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not delete this scan. Please try again.'),
+        ),
+      );
+      setState(() => _deleting = false);
+    }
+  }
+
+  // ── UI ──────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
         bottom: false,
-        child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(
-                  valueColor:
-                      AlwaysStoppedAnimation<Color>(AppColors.violetaClaro),
-                ),
-              )
-            : _buildContent(),
+        child: Column(
+          children: [
+            const SkeenTopAppBar(
+              title: 'Mole detail',
+              subtitle: 'analysis mole',
+              showBack: true,
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.violetaClaro,
+                        ),
+                      ),
+                    )
+                  : _buildContent(),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -104,8 +228,6 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     final result = analysis?.result;
     if (analysis == null || result == null) return _buildError();
 
-    // Distribute the content vertically on tall screens; collapse to a
-    // scrollable column on shorter ones so nothing gets clipped.
     return LayoutBuilder(
       builder: (context, constraints) {
         return SingleChildScrollView(
@@ -116,15 +238,16 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 4),
                   _buildImageCard(),
                   const SizedBox(height: 16),
                   _buildRiskCard(result, analysis),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   _buildMetadataTiles(analysis),
                   const Spacer(),
                   _buildActionRow(),
+                  const SizedBox(height: 12),
+                  _buildDeleteButton(),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -132,55 +255,6 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => context.canPop() ? context.pop() : null,
-            child: Container(
-              width: 27,
-              height: 26,
-              decoration: BoxDecoration(
-                color: const Color(0xFF9057F0),
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: const Icon(Icons.arrow_back,
-                  color: Colors.white, size: 16),
-            ),
-          ),
-          const SizedBox(width: 14),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Mole detail',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w600,
-                    fontSize: 16,
-                    letterSpacing: -0.16,
-                    color: Color(0xFFF5F5F5),
-                  )),
-              Text('analysis mole',
-                  style: TextStyle(
-                    fontFamily: 'Poppins',
-                    fontWeight: FontWeight.w500,
-                    fontSize: 11,
-                    letterSpacing: -0.11,
-                    color: Color(0x87EDE9FE),
-                  )),
-            ],
-          ),
-          const Spacer(),
-          const Text('✧ *˚',
-              style: TextStyle(fontSize: 18, color: Color(0x59EDE9FE))),
-        ],
-      ),
     );
   }
 
@@ -309,7 +383,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
 
   Widget _buildMetadataTiles(LesionAnalysis analysis) {
     final bodyRegion = widget.bodyRegion ?? analysis.bodyRegion ?? 'Not set';
-    final capturedAt = DateFormat('MMMM d, y').format(analysis.capturedAt);
+    final capturedAt = DateFormat('MMM d, y').format(analysis.capturedAt);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 21),
       child: Row(
@@ -317,14 +391,16 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           Expanded(
             child: _MetadataTile(
               icon: Icons.pin_drop_outlined,
-              label: 'Location: $bodyRegion',
+              label: 'LOCATION',
+              value: bodyRegion,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _MetadataTile(
               icon: Icons.calendar_today_outlined,
-              label: 'Captured: $capturedAt',
+              label: 'CAPTURED',
+              value: capturedAt,
             ),
           ),
         ],
@@ -339,7 +415,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
         children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: _exporting ? null : _downloadPdf,
+              onPressed: _exporting || _deleting ? null : _downloadPdf,
               icon: _exporting
                   ? const SizedBox(
                       width: 16,
@@ -366,8 +442,9 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: FilledButton.icon(
-              onPressed: () =>
-                  context.canPop() ? context.pop() : context.go('/home'),
+              onPressed: _deleting
+                  ? null
+                  : () => context.canPop() ? context.pop() : context.go('/home'),
               icon: const Icon(Icons.check, size: 18),
               label: const Text('Done'),
               style: FilledButton.styleFrom(
@@ -386,6 +463,50 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 21),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _deleting ? null : _confirmAndDelete,
+          icon: _deleting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.fucsia,
+                  ),
+                )
+              : const Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: AppColors.fucsia,
+                ),
+          label: Text(
+            _deleting ? 'Deleting…' : 'Delete this scan',
+            style: const TextStyle(color: AppColors.fucsia),
+          ),
+          style: OutlinedButton.styleFrom(
+            side: BorderSide(
+              color: AppColors.fucsia.withValues(alpha: 0.6),
+            ),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -454,38 +575,124 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
 }
 
 class _MetadataTile extends StatelessWidget {
-  const _MetadataTile({required this.icon, required this.label});
+  const _MetadataTile({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   final IconData icon;
   final String label;
+  final String value;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 69,
-      padding: const EdgeInsets.all(12),
+      height: 100,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1444),
         border: Border.all(color: const Color(0xFF2F1B66)),
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Icon(icon, color: AppColors.violeta, size: 24),
-          const SizedBox(height: 6),
-          Text(label,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                fontWeight: FontWeight.w500,
-                fontSize: 8,
-                color: Color(0xFFCCC3D8),
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: AppColors.violeta.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: Icon(icon, color: AppColors.violeta, size: 18),
               ),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w600,
+                  fontSize: 10,
+                  letterSpacing: 1.0,
+                  color: Color(0xFF8B82B5),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+              height: 1.3,
+              color: Color(0xFFE2DFFF),
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _DeleteConfirmDialog extends StatelessWidget {
+  const _DeleteConfirmDialog({this.bodyRegion});
+  final String? bodyRegion;
+
+  @override
+  Widget build(BuildContext context) {
+    final region = bodyRegion ?? 'this scan';
+    return AlertDialog(
+      backgroundColor: AppColors.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.violetaOscuro),
+      ),
+      title: const Row(
+        children: [
+          Icon(Icons.delete_outline, color: AppColors.fucsia, size: 22),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Delete this scan?',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                color: AppColors.violetaClaro,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'This permanently removes the photo and analysis on $region '
+        'from this device and from your private cloud. '
+        'This action cannot be undone.',
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          color: AppColors.hintText,
+          fontSize: 13,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.fucsia),
+          child: const Text('Delete'),
+        ),
+      ],
     );
   }
 }
