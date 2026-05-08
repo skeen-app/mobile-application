@@ -21,6 +21,21 @@ class AuthApiResponse {
   final RegisteredUser? user;
 }
 
+class FederatedAuthResponse {
+  const FederatedAuthResponse({
+    required this.token,
+    required this.user,
+    required this.isNewUser,
+  });
+  final AuthToken token;
+  final RegisteredUser user;
+
+  /// `true` when the backend just provisioned the Firestore profile.
+  /// Drives the routing to ``/onboarding/complete-profile`` so DNI +
+  /// phone get filled before the user lands on `/home`.
+  final bool isNewUser;
+}
+
 /// HTTP client for the Auth bounded context.
 ///
 /// Endpoints:
@@ -134,6 +149,69 @@ class AuthApi {
       return RegisteredUser.fromJson(json);
     }
     throw _mapError(res, path: '/auth/me');
+  }
+
+  /// Federated sign-in: hands a Firebase ID token (obtained from any
+  /// Firebase-supported provider — Google today) to the backend so it
+  /// can verify, upsert the Firestore profile, and return our session.
+  Future<FederatedAuthResponse> signInWithFirebaseToken({
+    required String idToken,
+  }) async {
+    AppLogger.info('Attempting federated sign-in', tag: 'AuthApi');
+    final res = await _send('/auth/firebase', {'idToken': idToken});
+    final json = _decodeJson(res);
+    final tokenJson = json['token'];
+    final userJson = json['user'];
+    if (tokenJson is! Map<String, dynamic> ||
+        userJson is! Map<String, dynamic>) {
+      throw const ServerFailure('Malformed federated sign-in response');
+    }
+    return FederatedAuthResponse(
+      token: AuthToken.fromJson(tokenJson),
+      user: RegisteredUser.fromJson(userJson),
+      isNewUser: json['isNewUser'] as bool? ?? false,
+    );
+  }
+
+  /// Fills DNI + phone for a profile created by federated sign-in.
+  /// Idempotency guarded server-side: 409 once DNI is already set.
+  Future<RegisteredUser> completeProfile({
+    required AuthToken token,
+    required String dni,
+    required String phone,
+    String? name,
+    String? lastName,
+  }) async {
+    AppLogger.info('POST /auth/me/complete-profile', tag: 'AuthApi');
+    final body = <String, dynamic>{
+      'dni': dni,
+      'phone': phone,
+      if (name != null && name.isNotEmpty) 'name': name,
+      if (lastName != null && lastName.isNotEmpty) 'lastName': lastName,
+    };
+    final http.Response res;
+    try {
+      res = await _client
+          .post(
+            ApiConfig.uri('/auth/me/complete-profile'),
+            headers: {
+              ...ApiConfig.jsonHeaders,
+              'Authorization': 'Bearer ${token.value}',
+            },
+            body: jsonEncode(body),
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network error during complete-profile',
+          tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return RegisteredUser.fromJson(_decodeJson(res));
+    }
+    throw _mapError(res, path: '/auth/me/complete-profile');
   }
 
   /// Public password-reset flow — used by the unauthenticated

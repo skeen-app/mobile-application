@@ -65,6 +65,11 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^4.0.0
 
+  # Firebase Auth + Google Sign-In (federated sign-in on Android).
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
+
   # ── Detection context: AR-AI bridge ─────────────────────────────
   # On-device classification (EfficientNetB0 → 5 lesion classes)
   tflite_flutter: ^0.11.0
@@ -93,6 +98,19 @@ dev_dependencies:
   freezed: ^2.5.7
   json_serializable: ^6.8.0
 
+  # App-icon generator — single PNG → all Android mipmap-* + iOS
+  # AppIcon.appiconset + adaptive icon. Run with:
+  #   dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/images/logo/skeen.png"
+  adaptive_icon_background: "#0E0729"
+  adaptive_icon_foreground: "assets/images/logo/skeen.png"
+
 flutter:
   uses-material-design: true
 
@@ -100,6 +118,7 @@ flutter:
     - assets/models/skeen_v2_quantized.tflite
     - assets/images/
     - assets/images/home/
+    - assets/images/logo/
     - assets/images/nav/
     - assets/images/profile/
 

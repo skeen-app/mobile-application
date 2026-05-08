@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/application/auth_state.dart';
+import '../../features/auth/presentation/screens/complete_profile_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -41,6 +42,20 @@ const _unauthenticatedRoutes = <String>{
   '/onboarding/permissions',
   '/onboarding/calibrate',
   '/onboarding/terms',
+  '/onboarding/complete-profile',
+};
+
+/// Routes that are *exclusively* for signed-out users — even if the auth
+/// state is hydrated we must still bounce them away. The onboarding funnel
+/// (permissions / terms) is intentionally excluded because the post-
+/// registration flow runs while already authenticated.
+const _signedOutOnlyRoutes = <String>{
+  '/',
+  '/login',
+  '/register',
+  '/register/success',
+  '/forgot-password',
+  '/forgot-password/success',
 };
 
 bool _isUnauthenticatedLocation(String location) {
@@ -60,8 +75,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuthenticated =
           ref.read(authControllerProvider).isAuthenticated;
-      final goingToUnauthRoute =
-          _isUnauthenticatedLocation(state.matchedLocation);
+      final location = state.matchedLocation;
+      final goingToUnauthRoute = _isUnauthenticatedLocation(location);
+
+      // Hydrated session opening the app: skip the onboarding /
+      // sign-in funnel and land straight on /home so users don't
+      // re-see the splash. The post-registration onboarding steps are
+      // intentionally NOT in [_signedOutOnlyRoutes], so the
+      // register → permissions → terms → home flow keeps working.
+      if (isAuthenticated && _signedOutOnlyRoutes.contains(location)) {
+        return '/home';
+      }
 
       // Protected route + signed-out → bounce to onboarding. After a
       // backend-confirmed logout this guarantees the back stack cannot
@@ -107,6 +131,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/onboarding/terms',
         name: 'onboarding-terms',
         builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/complete-profile',
+        name: 'onboarding-complete-profile',
+        builder: (context, state) => const CompleteProfileScreen(),
       ),
       GoRoute(
         path: '/forgot-password',

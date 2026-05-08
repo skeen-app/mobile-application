@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -9,6 +10,19 @@ import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
 import '../domain/lesion_analysis.dart';
 
+// skeen brand palette mirrored on the printable PDF so a clinician
+// recognises it as ours at a glance. Light surface tints are used as
+// printable backgrounds to keep ink usage low.
+const PdfColor _kBrandPurple = PdfColor.fromInt(0xFF7B5BE0);
+const PdfColor _kBrandLilac = PdfColor.fromInt(0xFFB5A9E9);
+const PdfColor _kBrandIndigo = PdfColor.fromInt(0xFF1E1444);
+const PdfColor _kBrandSky = PdfColor.fromInt(0xFF1FB89A);
+const PdfColor _kBrandPink = PdfColor.fromInt(0xFFE3416B);
+const PdfColor _kBrandOrange = PdfColor.fromInt(0xFFE46A1D);
+const PdfColor _kSurfaceTint = PdfColor.fromInt(0xFFF6F3FB);
+const PdfColor _kBorderTint = PdfColor.fromInt(0xFFE6E1F4);
+const PdfColor _kTextMuted = PdfColor.fromInt(0xFF6B6098);
+
 /// Generates a single-page PDF triage report for a [LesionAnalysis].
 ///
 /// Layout:
@@ -17,6 +31,21 @@ import '../domain/lesion_analysis.dart';
 ///   3. Risk card: level + class + confidence bar + description.
 ///   4. Metadata grid: body region, captured date, distance, image hash.
 class PdfReportService {
+  /// Cached so the brand mark only loads from the asset bundle once per
+  /// app lifetime — every report after the first re-uses this image.
+  pw.MemoryImage? _logoImage;
+
+  Future<pw.MemoryImage?> _loadLogo() async {
+    if (_logoImage != null) return _logoImage;
+    try {
+      final bytes = await rootBundle.load('assets/images/logo/skeen.png');
+      _logoImage = pw.MemoryImage(bytes.buffer.asUint8List());
+      return _logoImage;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<Uint8List> build({
     required LesionAnalysis analysis,
     required Uint8List? imageBytes,
@@ -28,6 +57,7 @@ class PdfReportService {
     );
 
     final image = imageBytes != null ? pw.MemoryImage(imageBytes) : null;
+    final logo = await _loadLogo();
     final result = analysis.result;
     final dateFmt = DateFormat('MMMM d, y · HH:mm').format(analysis.capturedAt);
 
@@ -38,7 +68,7 @@ class PdfReportService {
         build: (ctx) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            _header(),
+            _header(logo),
             pw.SizedBox(height: 18),
             if (image != null) _imageBlock(image),
             pw.SizedBox(height: 18),
@@ -69,56 +99,92 @@ class PdfReportService {
 
   // ── Sections ──────────────────────────────────────────────────────
 
-  pw.Widget _header() {
-    return pw.Row(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
-      children: [
-        pw.Container(
-          width: 36,
-          height: 36,
-          decoration: pw.BoxDecoration(
-            color: PdfColor.fromInt(0xFF7B5BE0),
-            borderRadius: pw.BorderRadius.circular(8),
-          ),
-          alignment: pw.Alignment.center,
-          child: pw.Text(
-            'sk',
-            style: pw.TextStyle(
+  pw.Widget _header(pw.MemoryImage? logo) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(12),
+      decoration: pw.BoxDecoration(
+        color: _kSurfaceTint,
+        borderRadius: pw.BorderRadius.circular(10),
+        border: pw.Border.all(color: _kBorderTint),
+      ),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.center,
+        children: [
+          pw.Container(
+            width: 44,
+            height: 44,
+            decoration: pw.BoxDecoration(
               color: PdfColors.white,
-              fontWeight: pw.FontWeight.bold,
-              fontSize: 16,
+              borderRadius: pw.BorderRadius.circular(10),
+              border: pw.Border.all(color: _kBorderTint),
+            ),
+            alignment: pw.Alignment.center,
+            child: logo != null
+                ? pw.Padding(
+                    padding: const pw.EdgeInsets.all(4),
+                    child: pw.Image(logo, fit: pw.BoxFit.contain),
+                  )
+                : pw.Text(
+                    'sk',
+                    style: pw.TextStyle(
+                      color: _kBrandPurple,
+                      fontWeight: pw.FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+          pw.SizedBox(width: 14),
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  'skeen',
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 20,
+                    letterSpacing: 0.4,
+                    color: _kBrandIndigo,
+                  ),
+                ),
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'Dermatological triage report',
+                  style: pw.TextStyle(
+                    fontSize: 10,
+                    color: _kTextMuted,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        pw.SizedBox(width: 12),
-        pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Text('skeen',
-                style: pw.TextStyle(
-                  fontWeight: pw.FontWeight.bold,
-                  fontSize: 18,
-                  color: PdfColor.fromInt(0xFF1E1444),
-                )),
-            pw.Text('Dermatological triage report',
-                style: pw.TextStyle(
-                  fontSize: 10,
-                  color: PdfColor.fromInt(0xFF6B6098),
-                )),
-          ],
-        ),
-      ],
+          pw.Container(
+            padding:
+                const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: pw.BoxDecoration(
+              color: _kBrandPurple,
+              borderRadius: pw.BorderRadius.circular(999),
+            ),
+            child: pw.Text(
+              'AI · ON-DEVICE',
+              style: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 8,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   pw.Widget _imageBlock(pw.MemoryImage image) {
     return pw.Container(
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(
-          color: PdfColor.fromInt(0xFF2F1B66),
-          width: 1,
-        ),
-        borderRadius: pw.BorderRadius.circular(8),
+        border: pw.Border.all(color: _kBrandLilac, width: 1),
+        borderRadius: pw.BorderRadius.circular(10),
       ),
       padding: const pw.EdgeInsets.all(4),
       child: pw.AspectRatio(
@@ -138,8 +204,9 @@ class PdfReportService {
     return pw.Container(
       padding: const pw.EdgeInsets.all(16),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColor.fromInt(0xFF2F1B66)),
-        borderRadius: pw.BorderRadius.circular(8),
+        color: _kSurfaceTint,
+        border: pw.Border.all(color: _kBorderTint),
+        borderRadius: pw.BorderRadius.circular(10),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -166,7 +233,7 @@ class PdfReportService {
                   pw.Text(result.topLabel.display,
                       style: pw.TextStyle(
                         fontSize: 12,
-                        color: PdfColor.fromInt(0xFF1E1444),
+                        color: _kBrandIndigo,
                       )),
                 ],
               ),
@@ -176,7 +243,7 @@ class PdfReportService {
           pw.Text(description,
               style: pw.TextStyle(
                 fontSize: 10,
-                color: PdfColor.fromInt(0xFF4A4A6A),
+                color: _kTextMuted,
               )),
           pw.SizedBox(height: 12),
           pw.Row(
@@ -184,7 +251,7 @@ class PdfReportService {
               pw.Text('Confidence',
                   style: pw.TextStyle(
                     fontSize: 9,
-                    color: PdfColor.fromInt(0xFF6B6098),
+                    color: _kTextMuted,
                   )),
               pw.SizedBox(width: 8),
               pw.Expanded(
@@ -193,8 +260,9 @@ class PdfReportService {
                     pw.Container(
                       height: 8,
                       decoration: pw.BoxDecoration(
-                        color: PdfColor.fromInt(0xFFE6E1F4),
+                        color: PdfColors.white,
                         borderRadius: pw.BorderRadius.circular(4),
+                        border: pw.Border.all(color: _kBorderTint),
                       ),
                     ),
                     pw.LayoutBuilder(
@@ -245,24 +313,31 @@ class PdfReportService {
                 width: 240,
                 padding: const pw.EdgeInsets.all(10),
                 decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColor.fromInt(0xFFE6E1F4)),
-                  borderRadius: pw.BorderRadius.circular(6),
+                  color: _kSurfaceTint,
+                  border: pw.Border.all(color: _kBorderTint),
+                  borderRadius: pw.BorderRadius.circular(8),
                 ),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text(e.$1,
-                        style: pw.TextStyle(
-                          fontSize: 8,
-                          color: PdfColor.fromInt(0xFF6B6098),
-                        )),
+                    pw.Text(
+                      e.$1,
+                      style: pw.TextStyle(
+                        fontSize: 8,
+                        letterSpacing: 0.6,
+                        color: _kBrandPurple,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
                     pw.SizedBox(height: 2),
-                    pw.Text(e.$2,
-                        style: pw.TextStyle(
-                          fontSize: 11,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColor.fromInt(0xFF1E1444),
-                        )),
+                    pw.Text(
+                      e.$2,
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        fontWeight: pw.FontWeight.bold,
+                        color: _kBrandIndigo,
+                      ),
+                    ),
                   ],
                 ),
               ))
@@ -271,28 +346,58 @@ class PdfReportService {
   }
 
   pw.Widget _footer(String analysisId) {
-    return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.start,
-      children: [
-        pw.Divider(color: PdfColor.fromInt(0xFFE6E1F4)),
-        pw.SizedBox(height: 6),
-        pw.Text(
-          'This report was generated by skeen on-device AI for triage support '
-          'only. It does not replace a clinical diagnosis. Consult a licensed '
-          'dermatologist for any concerning lesion.',
-          style: pw.TextStyle(
-            fontSize: 8,
-            color: PdfColor.fromInt(0xFF6B6098),
-            fontStyle: pw.FontStyle.italic,
+    return pw.Container(
+      padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: pw.BoxDecoration(
+        color: _kBrandIndigo,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            children: [
+              pw.Container(
+                width: 4,
+                height: 4,
+                decoration: pw.BoxDecoration(
+                  color: _kBrandPurple,
+                  shape: pw.BoxShape.circle,
+                ),
+              ),
+              pw.SizedBox(width: 6),
+              pw.Text(
+                'TRIAGE-ONLY DISCLAIMER',
+                style: pw.TextStyle(
+                  fontSize: 7,
+                  letterSpacing: 0.8,
+                  color: _kBrandLilac,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-        ),
-        pw.SizedBox(height: 4),
-        pw.Text('Analysis ID: $analysisId',
+          pw.SizedBox(height: 4),
+          pw.Text(
+            'This report was generated by skeen on-device AI for triage '
+            'support only. It does not replace a clinical diagnosis. '
+            'Consult a licensed dermatologist for any concerning lesion.',
+            style: pw.TextStyle(
+              fontSize: 8,
+              color: PdfColors.white,
+              fontStyle: pw.FontStyle.italic,
+            ),
+          ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Analysis ID  $analysisId',
             style: pw.TextStyle(
               fontSize: 7,
-              color: PdfColor.fromInt(0xFF8A82A8),
-            )),
-      ],
+              color: _kBrandLilac,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -301,11 +406,11 @@ class PdfReportService {
   PdfColor _riskColor(WarningLevel level) {
     switch (level) {
       case WarningLevel.alert:
-        return PdfColor.fromInt(0xFFE3416B);
+        return _kBrandPink;
       case WarningLevel.caution:
-        return PdfColor.fromInt(0xFFE46A1D);
+        return _kBrandOrange;
       case WarningLevel.reassuring:
-        return PdfColor.fromInt(0xFF1FB89A);
+        return _kBrandSky;
     }
   }
 

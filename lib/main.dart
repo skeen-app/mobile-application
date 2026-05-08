@@ -1,6 +1,10 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'core/logger/app_logger.dart';
 
 import 'core/notifications/in_app_banner.dart';
 import 'core/router/app_router.dart';
@@ -15,6 +19,23 @@ import 'features/reminders/application/reminders_controller.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+
+  // Federated sign-in (Google) is Android-only in this iteration. On
+  // iOS the GoogleService-Info.plist isn't shipped yet so we skip the
+  // Firebase mobile SDK init there to avoid crashes — the email +
+  // password flow keeps working untouched.
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    try {
+      await Firebase.initializeApp();
+    } catch (e, st) {
+      AppLogger.error(
+        'Firebase mobile SDK init failed (Google sign-in disabled)',
+        tag: 'main',
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
 
   runApp(
     ProviderScope(

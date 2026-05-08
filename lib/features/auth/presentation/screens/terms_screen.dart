@@ -11,34 +11,91 @@ class TermsScreen extends StatelessWidget {
 
   static const List<_Clause> _clauses = [
     _Clause(
-      title: 'Lorem ipsum',
+      title: 'Triage tool, not a medical diagnosis',
       body:
-          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod '
-          'tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim '
-          'veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea '
-          'commodo consequat.',
+          'skeen is an AI-assisted dermatological triage tool meant for '
+          'self-monitoring and early-warning purposes only. The risk '
+          'predictions surfaced by the on-device model are heuristic and '
+          "MUST NOT be treated as a clinical diagnosis or substitute for "
+          'professional medical advice. Always consult a licensed '
+          'dermatologist for any concerning lesion, and seek urgent care '
+          'whenever a scan is flagged as high risk.',
     ),
     _Clause(
-      title: 'Dolor sit amet',
+      title: 'Your account & local data',
       body:
-          'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum '
-          'dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non '
-          'proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+          'You are responsible for the accuracy of the information you '
+          'provide at registration (name, DNI, email, phone) and for '
+          'safeguarding the credentials used to access skeen. Every '
+          'lesion photo captured on this device is encrypted at rest '
+          'using AES-256 inside the app sandbox and never leaves your '
+          'phone unless you explicitly enable cloud sync from Privacy & '
+          'Security.',
     ),
     _Clause(
-      title: 'Lorem ipsum',
+      title: 'Optional cloud sync',
       body:
-          'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod '
-          'tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim '
-          'veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea '
-          'commodo consequat.',
+          'When cloud sync is ON, your scans are uploaded to a private '
+          'bucket bound to your account and re-encrypted server-side. '
+          'No personally identifiable fields (name, DNI, email, phone) '
+          'are written into the scan documents — the cloud copy is '
+          'pseudonymous, tied to an opaque user identifier. You may '
+          'turn cloud sync off at any time; future scans will then '
+          'remain local-only.',
     ),
     _Clause(
-      title: 'Dolor sit amet',
+      title: 'AR camera, sensors & permissions',
       body:
-          'Duis aute irure dolor in reprehenderit in voluptate velit esse cillum '
-          'dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non '
-          'proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+          'skeen requests access to the camera, photo library, '
+          'notifications, location and motion sensors strictly for the '
+          'features you enable: assisted scanning (camera, AR sensors), '
+          'gallery uploads (photos), reminder alarms (notifications), '
+          'and the local UV index on the home dashboard (location). '
+          'Each permission can be revoked from system settings — the '
+          'app will gracefully degrade or surface a clear "needs '
+          'access" prompt where applicable.',
+    ),
+    _Clause(
+      title: 'Insights & external content',
+      body:
+          'The Insights feed proxies dermatology articles published by '
+          'third-party sources (PubMed / NCBI). skeen does not author '
+          'this content nor endorse the views of individual researchers; '
+          'it is provided for educational reference only. Tapping an '
+          'article opens it in your platform browser — you remain '
+          'subject to the publisher\'s own terms of use.',
+    ),
+    _Clause(
+      title: 'Reminders & notifications',
+      body:
+          'skeen schedules local OS notifications based on the reminders '
+          'you create. These alarms run on this device only and are not '
+          'shared across phones. We never push marketing or '
+          'recommendation notifications without an explicit reminder '
+          'you scheduled or a direct response to a feature you used '
+          '(e.g. confirming a scan was saved).',
+    ),
+    _Clause(
+      title: 'Right to erasure',
+      body:
+          'You may delete an individual scan from the Mole detail view '
+          'or your entire account from Personal Information → Delete '
+          'account. Deleting a scan removes the encrypted record from '
+          'this device and, when applicable, from the cloud bucket and '
+          'metadata index. Account deletion soft-deletes your profile '
+          'for audit purposes and hard-deletes your authentication '
+          'identity so the credentials can no longer sign in.',
+    ),
+    _Clause(
+      title: 'Acceptance & governing terms',
+      body:
+          'By tapping "Accept and continue" you confirm that you have '
+          'read and agree to these terms, that you understand skeen is '
+          'a screening aid and not a medical device, and that any '
+          'clinical decision based on scan results is your own '
+          'responsibility. These terms are governed by the laws of the '
+          'Republic of Peru. We may revise this document; continued use '
+          'after a revision implies acceptance of the updated version.',
     ),
   ];
 
