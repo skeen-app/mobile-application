@@ -17,12 +17,18 @@ class BodyMapSection extends StatelessWidget {
     required this.counts,
     required this.onCompleteView,
     required this.onAddNew,
+    this.pendingSyncCount = 0,
   });
 
   final List<LesionSummary> summaries;
   final Map<BodyRegionGroup, int> counts;
   final VoidCallback onCompleteView;
   final VoidCallback onAddNew;
+
+  /// Number of locally captured scans waiting to be uploaded to cloud.
+  /// When > 0 a discreet badge is shown next to the section title so the
+  /// user knows their offline scans are queued.
+  final int pendingSyncCount;
 
   static const double _figureWidth = 58;
   static const double _figureHeight = 165;
@@ -45,6 +51,10 @@ class BodyMapSection extends StatelessWidget {
                 color: AppColors.stroke,
               ),
             ),
+            if (pendingSyncCount > 0) ...[
+              const SizedBox(width: 8),
+              _PendingSyncChip(count: pendingSyncCount),
+            ],
             const Spacer(),
             GestureDetector(
               onTap: onCompleteView,
@@ -325,6 +335,44 @@ class _LegendDot extends StatelessWidget {
       width: 6,
       height: 6,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    );
+  }
+}
+
+class _PendingSyncChip extends StatelessWidget {
+  const _PendingSyncChip({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A1F5C),
+        border: Border.all(color: const Color(0xFF6B58C4)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.cloud_upload_outlined,
+            size: 10,
+            color: Color(0xFF9B8DEB),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            '$count pending',
+            style: const TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w600,
+              fontSize: 9,
+              letterSpacing: 0.2,
+              color: Color(0xFF9B8DEB),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

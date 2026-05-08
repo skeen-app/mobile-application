@@ -30,3 +30,10 @@ doc/api/
 
 web/
 .idea/
+
+# Firebase mobile app config — contains the Web API key + project IDs.
+# Each developer downloads it from Firebase Console.
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist
+firebase_options.dart
+lib/firebase_options.dart

@@ -11,6 +11,7 @@ import '../../../../core/widgets/skeen_text_field.dart';
 import '../../application/auth_controller.dart';
 import '../../application/validators.dart';
 import '../../domain/login_request.dart';
+import '../widgets/skeen_google_button.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -61,8 +62,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (!mounted) return;
     if (ok) {
-      // TODO: replace with `/home` once the Patient context lands.
-      context.go('/onboarding/permissions');
+      // Returning users skip onboarding (permissions/calibration/terms) —
+      // those steps belong only to the post-registration funnel.
+      context.go('/home');
     } else {
       final failure = ref.read(authControllerProvider).failure;
       await SkeenAlertDialog.showError(
@@ -73,13 +75,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  Future<void> _onGoogleSignIn() async {
+    final controller = ref.read(authControllerProvider.notifier);
+    final outcome = await controller.signInWithGoogle();
+    if (!mounted) return;
+    if (!outcome.success) {
+      final failure = ref.read(authControllerProvider).failure;
+      if (failure != null) {
+        await SkeenAlertDialog.showError(
+          context,
+          title: "We couldn't sign you in with Google",
+          message: failure.message,
+        );
+      }
+      return;
+    }
+    if (outcome.needsProfileCompletion) {
+      context.go('/onboarding/complete-profile');
+    } else {
+      context.go('/home');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSubmitting = ref.watch(
       authControllerProvider.select((s) => s.isSubmitting),
     );
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -87,6 +113,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: SingleChildScrollView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(bottom: keyboardInset + 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -114,7 +141,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       color: AppColors.hintText,
                     ),
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: 24),
+                  SkeenGoogleButton(
+                    onPressed: isSubmitting ? null : _onGoogleSignIn,
+                    isLoading: isSubmitting,
+                  ),
+                  const _OrDivider(),
                   SkeenTextField(
                     label: 'Email',
                     controller: _emailCtrl,
@@ -194,6 +226,42 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Subtle horizontal divider with a centered "OR" pill — used between
+/// the federated sign-in button and the email/password form.
+class _OrDivider extends StatelessWidget {
+  const _OrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Divider(color: AppColors.violetaOscuro, height: 1),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'OR',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                letterSpacing: 1.2,
+                color: AppColors.hintText.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          const Expanded(
+            child: Divider(color: AppColors.violetaOscuro, height: 1),
+          ),
+        ],
       ),
     );
   }

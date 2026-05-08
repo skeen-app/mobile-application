@@ -12,5 +12,7 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    // Register the Detection context's AR-AI bridge plugin (ARKit + LiDAR).
+    SkeenArPlugin.register(with: engineBridge.pluginRegistry.registrar(forPlugin: "SkeenArPlugin")!)
   }
 }

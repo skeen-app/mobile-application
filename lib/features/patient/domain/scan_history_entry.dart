@@ -14,6 +14,7 @@ class ScanHistoryEntry {
     required this.riskLevel,
     required this.scannedAt,
     this.thumbnailUrl,
+    this.pendingSync = false,
   });
 
   /// Stable identifier — Firestore doc id once the backend lands.
@@ -35,4 +36,8 @@ class ScanHistoryEntry {
   /// Cloud Storage URL of the captured photo. `null` while the upload is
   /// pending or for entries seeded before the photo pipeline existed.
   final String? thumbnailUrl;
+
+  /// `true` when this row is local-only and queued for cloud sync.
+  /// Surfaced to the UI as a small "pending sync" badge.
+  final bool pendingSync;
 }
