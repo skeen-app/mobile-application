@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
@@ -196,6 +197,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       if (!mounted) return;
       setState(() => _avatarRefreshToken++);
 
+      ref.notifications.recordAvatarUpdated();
+
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       _showSnackBar(context, 'Profile photo updated ✓');
@@ -234,6 +237,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _onLogout(BuildContext context, WidgetRef ref) async {
     await ref.read(authControllerProvider.notifier).signOut();
+    // Activity log is per-user — wipe it so the next account that signs
+    // in on this device starts fresh.
+    await ref.notifications.clearAll();
     if (!context.mounted) return;
     context.goNamed('onboarding');
   }

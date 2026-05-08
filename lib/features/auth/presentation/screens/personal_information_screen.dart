@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/logger/app_logger.dart';
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
@@ -93,11 +94,19 @@ class _PersonalInformationScreenState
       final name = _nameCtrl.text.trim();
       final lastName = _lastNameCtrl.text.trim();
       final phone = _phoneCtrl.text.trim();
+      final changedFields = <String>[
+        if (name != user.name) 'name',
+        if (lastName != user.lastName) 'lastName',
+        if (phone != user.phone) 'phone',
+      ];
       await ref.read(authControllerProvider.notifier).updateProfile(
             name: name != user.name ? name : null,
             lastName: lastName != user.lastName ? lastName : null,
             phone: phone != user.phone ? phone : null,
           );
+      if (changedFields.isNotEmpty) {
+        ref.notifications.recordProfileEdited(fields: changedFields);
+      }
       if (!mounted) return;
       _showSnack('Profile updated', destructive: false);
     } on AuthFailure catch (failure) {

@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../core/theme/app_colors.dart';
-
 /// 2-column quick action tile (Upload a photo, Reminder) below the Scan CTA.
 ///
-/// Matches Figma 121:469 / 121:471: dark indigo card with a small tinted icon
-/// chip on the left and a two-line label stack to its right.
+/// Reads as a taller media card so the home dashboard fills the device
+/// height without forcing a scroll on standard 6"+ phones.
 class QuickActionTile extends StatelessWidget {
   const QuickActionTile({
     super.key,
@@ -29,65 +27,69 @@ class QuickActionTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: const Color(0xFF1E1444),
-      borderRadius: BorderRadius.circular(9),
+      borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        borderRadius: BorderRadius.circular(9),
+        borderRadius: BorderRadius.circular(14),
         onTap: onPressed,
         child: Container(
-          height: 69,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
+          height: 116,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: const Color(0xFF2F1B66)),
           ),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
                   color: iconBackgroundColor,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Center(
                   child: SvgPicture.asset(
                     iconAsset,
-                    width: 20,
-                    height: 20,
+                    width: 22,
+                    height: 22,
                     colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                   ),
                 ),
               ),
-              const SizedBox(width: 11),
-              Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                        height: 1.5,
-                        letterSpacing: -0.12,
-                        color: AppColors.hintText,
-                      ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                      height: 1.15,
+                      letterSpacing: -0.14,
+                      color: Color(0xFFE2DFFF),
                     ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontFamily: 'Poppins',
-                        fontWeight: FontWeight.w500,
-                        fontSize: 8,
-                        height: 1.5,
-                        letterSpacing: -0.08,
-                        color: AppColors.stroke,
-                      ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Poppins',
+                      fontWeight: FontWeight.w500,
+                      fontSize: 11,
+                      height: 1.25,
+                      letterSpacing: -0.1,
+                      color: Color(0xFF8B82B5),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),

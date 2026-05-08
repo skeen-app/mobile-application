@@ -42,6 +42,51 @@ dependencies:
   # Geolocation (Patient context: temperature/UV by current location)
   geolocator: ^13.0.2
 
+  # OS-level permissions (camera, gallery, notifications)
+  permission_handler: ^11.3.1
+
+  # Gyroscope / accelerometer for sensor-based AR anchoring (popup tracks
+  # the lesion as the user rotates the phone — same trick Pokémon GO uses).
+  sensors_plus: ^6.0.1
+
+  # Network reachability — drives the offline-first scan sync orchestrator.
+  connectivity_plus: ^6.1.0
+
+  # PDF report generation (triage result "Download report" button).
+  pdf: ^3.11.1
+  printing: ^5.13.4
+  share_plus: ^10.1.2
+
+  # Open article links in the platform browser (Insights feed).
+  url_launcher: ^6.3.1
+
+  # Local OS notifications — drives the Reminders alarm-like behaviour.
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  flutter_timezone: ^4.0.0
+
+  # Firebase Auth + Google Sign-In (federated sign-in on Android).
+  firebase_core: ^3.6.0
+  firebase_auth: ^5.3.1
+  google_sign_in: ^6.2.1
+
+  # ── Detection context: AR-AI bridge ─────────────────────────────
+  # On-device classification (EfficientNetB0 → 5 lesion classes)
+  tflite_flutter: ^0.11.0
+  image: ^4.3.0
+  # Encrypted local persistence of LesionAnalysis (AES-256)
+  sqflite: ^2.4.1
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  encrypt: ^5.0.3
+  flutter_secure_storage: ^9.2.2
+  # Stable IDs for LesionAnalysis records
+  uuid: ^4.5.1
+  # SHA-256 hashing for image integrity verification
+  crypto: ^3.0.6
+  # Date formatting (triage result screen)
+  intl: ^0.19.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,13 +98,27 @@ dev_dependencies:
   freezed: ^2.5.7
   json_serializable: ^6.8.0
 
+  # App-icon generator — single PNG → all Android mipmap-* + iOS
+  # AppIcon.appiconset + adaptive icon. Run with:
+  #   dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.1
+
+flutter_launcher_icons:
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  image_path: "assets/images/logo/skeen.png"
+  adaptive_icon_background: "#0E0729"
+  adaptive_icon_foreground: "assets/images/logo/skeen.png"
+
 flutter:
   uses-material-design: true
 
   assets:
-    - assets/models/
+    - assets/models/skeen_v2_quantized.tflite
     - assets/images/
     - assets/images/home/
+    - assets/images/logo/
     - assets/images/nav/
     - assets/images/profile/
 

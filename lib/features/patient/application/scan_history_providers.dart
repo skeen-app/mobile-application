@@ -1,13 +1,25 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../auth/application/auth_controller.dart';
+import '../../detection/application/providers.dart';
+import '../../detection/application/sync_orchestrator.dart';
 import '../domain/scan_history_entry.dart';
 import '../domain/scan_history_filter.dart';
 import '../infrastructure/repositories/scan_history_repository.dart';
 
-/// Repository binding — swap to an HTTP implementation when the
-/// `GET /me/scan-history` endpoint ships.
+/// Repository binding — cloud-first via the new `/api/v1/scans` endpoint,
+/// merged with any locally pending offline rows so the user always sees
+/// their full history.
 final scanHistoryRepositoryProvider = Provider<ScanHistoryRepository>((ref) {
-  return const MockScanHistoryRepository();
+  final auth = ref.watch(authControllerProvider);
+  final user = auth.user;
+  if (user == null) return const EmptyScanHistoryRepository();
+  return HttpScanHistoryRepository(
+    api: ref.watch(scansApiProvider),
+    localRepository: ref.watch(lesionRepositoryProvider),
+    tokenReader: () => ref.read(authControllerProvider).token?.value,
+    patientId: user.id,
+  );
 });
 
 /// Raw, unfiltered list of scans for the authenticated user.
@@ -23,8 +35,7 @@ final scanHistorySearchProvider = StateProvider<String>((ref) => '');
 final scanHistoryFilterProvider =
     StateProvider<ScanHistoryFilter>((ref) => ScanHistoryFilter.empty);
 
-/// Search + filter applied on top of [scanHistoryProvider]. Recomputes
-/// when any of the three inputs changes; results are sorted newest-first.
+/// Search + filter applied on top of [scanHistoryProvider].
 final filteredScanHistoryProvider =
     Provider<AsyncValue<List<ScanHistoryEntry>>>((ref) {
   final entries = ref.watch(scanHistoryProvider);

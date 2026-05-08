@@ -12,6 +12,7 @@ import '../../../../core/widgets/skeen_text_field.dart';
 import '../../application/auth_controller.dart';
 import '../../application/validators.dart';
 import '../../domain/registration_request.dart';
+import '../widgets/skeen_google_button.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -108,13 +109,45 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
+  Future<void> _onGoogleSignIn() async {
+    final controller = ref.read(authControllerProvider.notifier);
+    final outcome = await controller.signInWithGoogle();
+    if (!mounted) return;
+    if (!outcome.success) {
+      final failure = ref.read(authControllerProvider).failure;
+      if (failure != null) {
+        await SkeenAlertDialog.showError(
+          context,
+          title: "We couldn't sign you up with Google",
+          message: failure.message,
+        );
+      }
+      return;
+    }
+    // First-time Google users complete DNI + phone before /home; existing
+    // returning users skip straight to /home.
+    if (outcome.needsProfileCompletion) {
+      context.go('/onboarding/complete-profile');
+    } else {
+      context.go('/home');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSubmitting = ref.watch(
       authControllerProvider.select((s) => s.isSubmitting),
     );
+    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
+      // ``resizeToAvoidBottomInset: false`` + manual bottom padding equal
+      // to ``viewInsets.bottom`` is the proven pattern to scroll focused
+      // fields cleanly above the keyboard. The default resize collapses
+      // the viewport but Flutter's auto-ensure-visible can still leave
+      // the focused input flush against the keyboard with no breathing
+      // room (which is exactly what was hiding the next input here).
+      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -122,6 +155,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: SingleChildScrollView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.only(bottom: keyboardInset + 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -149,7 +183,12 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                       color: AppColors.hintText,
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
+                  SkeenGoogleButton(
+                    onPressed: isSubmitting ? null : _onGoogleSignIn,
+                    isLoading: isSubmitting,
+                  ),
+                  const _RegisterOrDivider(),
                   SkeenTextField(
                     label: 'Name',
                     controller: _nameCtrl,
@@ -326,6 +365,40 @@ class _HintPanel extends StatelessWidget {
                 color: accent,
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RegisterOrDivider extends StatelessWidget {
+  const _RegisterOrDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Divider(color: AppColors.violetaOscuro, height: 1),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Text(
+              'OR',
+              style: TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                letterSpacing: 1.2,
+                color: AppColors.hintText.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+          const Expanded(
+            child: Divider(color: AppColors.violetaOscuro, height: 1),
           ),
         ],
       ),

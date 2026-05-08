@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
+import '../../../../core/notifications/notifications_controller.dart';
 import '../../../auth/application/auth_controller.dart';
+import '../../../detection/application/sync_orchestrator.dart';
 import '../../application/environment_providers.dart';
 import '../../application/lesion_summary_providers.dart';
 import '../../domain/body_region.dart';
@@ -69,8 +71,11 @@ class HomeScreen extends ConsumerWidget {
                                 children: [
                                   HomeGreeting(
                                     firstName: firstName,
-                                    hasNotifications: true,
-                                    onNotificationsTap: () {},
+                                    unreadCount: ref
+                                        .watch(notificationsControllerProvider)
+                                        .unreadCount,
+                                    onNotificationsTap: () =>
+                                        context.pushNamed('notifications'),
                                   ),
                                   const SizedBox(height: 18),
                                   ScanAMoleCard(
@@ -115,6 +120,10 @@ class HomeScreen extends ConsumerWidget {
                                   _BodyMapSlot(
                                     summaries: summariesAsync,
                                     counts: countsAsync,
+                                    pendingSyncCount: ref
+                                            .watch(pendingScanCountProvider)
+                                            .valueOrNull ??
+                                        0,
                                     onCompleteView: () =>
                                         context.pushNamed('body-map'),
                                     onAddNew: () =>
@@ -191,12 +200,14 @@ class _BodyMapSlot extends StatelessWidget {
     required this.counts,
     required this.onCompleteView,
     required this.onAddNew,
+    this.pendingSyncCount = 0,
   });
 
   final AsyncValue<List<LesionSummary>> summaries;
   final AsyncValue<Map<BodyRegionGroup, int>> counts;
   final VoidCallback onCompleteView;
   final VoidCallback onAddNew;
+  final int pendingSyncCount;
 
   @override
   Widget build(BuildContext context) {
@@ -212,6 +223,7 @@ class _BodyMapSlot extends StatelessWidget {
       counts: countsData,
       onCompleteView: onCompleteView,
       onAddNew: onAddNew,
+      pendingSyncCount: pendingSyncCount,
     );
   }
 }

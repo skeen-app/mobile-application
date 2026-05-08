@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/application/auth_controller.dart';
 import '../../features/auth/application/auth_state.dart';
+import '../../features/auth/presentation/screens/complete_profile_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
@@ -17,8 +18,11 @@ import '../../features/auth/presentation/screens/register_screen.dart';
 import '../../features/auth/presentation/screens/registration_success_screen.dart';
 import '../../features/auth/presentation/screens/terms_screen.dart';
 import '../../features/detection/presentation/screens/calibrate_screen.dart';
-import '../../features/detection/presentation/screens/scan_a_mole_screen.dart';
+import '../../features/detection/presentation/screens/scan_detail_screen.dart';
+import '../../features/detection/presentation/screens/scan_router_screen.dart';
+import '../../features/detection/presentation/screens/triage_result_screen.dart';
 import '../../features/detection/presentation/screens/upload_photo_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../../features/experts/presentation/screens/experts_screen.dart';
 import '../../features/patient/presentation/screens/body_map_screen.dart';
 import '../../features/patient/presentation/screens/history_screen.dart';
@@ -36,7 +40,22 @@ const _unauthenticatedRoutes = <String>{
   '/forgot-password',
   '/forgot-password/success',
   '/onboarding/permissions',
+  '/onboarding/calibrate',
   '/onboarding/terms',
+  '/onboarding/complete-profile',
+};
+
+/// Routes that are *exclusively* for signed-out users — even if the auth
+/// state is hydrated we must still bounce them away. The onboarding funnel
+/// (permissions / terms) is intentionally excluded because the post-
+/// registration flow runs while already authenticated.
+const _signedOutOnlyRoutes = <String>{
+  '/',
+  '/login',
+  '/register',
+  '/register/success',
+  '/forgot-password',
+  '/forgot-password/success',
 };
 
 bool _isUnauthenticatedLocation(String location) {
@@ -56,8 +75,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final isAuthenticated =
           ref.read(authControllerProvider).isAuthenticated;
-      final goingToUnauthRoute =
-          _isUnauthenticatedLocation(state.matchedLocation);
+      final location = state.matchedLocation;
+      final goingToUnauthRoute = _isUnauthenticatedLocation(location);
+
+      // Hydrated session opening the app: skip the onboarding /
+      // sign-in funnel and land straight on /home so users don't
+      // re-see the splash. The post-registration onboarding steps are
+      // intentionally NOT in [_signedOutOnlyRoutes], so the
+      // register → permissions → terms → home flow keeps working.
+      if (isAuthenticated && _signedOutOnlyRoutes.contains(location)) {
+        return '/home';
+      }
 
       // Protected route + signed-out → bounce to onboarding. After a
       // backend-confirmed logout this guarantees the back stack cannot
@@ -95,9 +123,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PermissionsScreen(),
       ),
       GoRoute(
+        path: '/onboarding/calibrate',
+        name: 'onboarding-calibrate',
+        builder: (context, state) => const CalibrateScreen(),
+      ),
+      GoRoute(
         path: '/onboarding/terms',
         name: 'onboarding-terms',
         builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/onboarding/complete-profile',
+        name: 'onboarding-complete-profile',
+        builder: (context, state) => const CompleteProfileScreen(),
       ),
       GoRoute(
         path: '/forgot-password',
@@ -140,17 +178,49 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'history',
         builder: (context, state) => const HistoryScreen(),
       ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const NotificationsScreen(),
+      ),
 
-      // Detection context (entered from home / center FAB)
+      // Detection context (entered from home / center FAB). The router
+      // screen probes ARKit/ARCore + depth and mounts ArScanScreen when
+      // available, falling back to ScanAMoleScreen otherwise.
       GoRoute(
         path: '/scan',
         name: 'scan-a-mole',
-        builder: (context, state) => const ScanAMoleScreen(),
+        builder: (context, state) => const ScanRouterScreen(),
       ),
       GoRoute(
         path: '/upload',
         name: 'upload-photo',
         builder: (context, state) => const UploadPhotoScreen(),
+      ),
+      GoRoute(
+        path: '/scan/result',
+        name: 'triage-result',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return TriageResultScreen(
+            analysisId: extra['analysisId'] as String? ?? '',
+            capturedImageBytes:
+                extra['capturedImageBytes'] as Uint8List? ?? Uint8List(0),
+            bodyRegion: extra['bodyRegion'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/scan/detail/:scanId',
+        name: 'scan-detail',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return ScanDetailScreen(
+            scanId: state.pathParameters['scanId']!,
+            remoteImageUrl: extra['remoteImageUrl'] as String?,
+            bodyRegion: extra['bodyRegion'] as String?,
+          );
+        },
       ),
 
       // Experts (consultation directory)
@@ -177,8 +247,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const PrivacySecurityScreen(),
           ),
           GoRoute(
-            path: 'notifications',
-            name: 'notifications',
+            path: 'notification-preferences',
+            name: 'notifications-settings',
             builder: (context, state) => const NotificationsSettingsScreen(),
           ),
         ],

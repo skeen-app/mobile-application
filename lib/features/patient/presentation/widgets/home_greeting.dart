@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../core/theme/app_colors.dart';
 
 /// Top-of-home greeting strip: time-aware salutation + first name of the
-/// signed-in user, alongside the notification bell.
+/// signed-in user, alongside the notification bell with unread counter.
 ///
 /// Falls back to a name-less salutation when the auth state has no `user`
 /// (e.g. fresh hydration before profile lookup completes).
@@ -12,7 +12,7 @@ class HomeGreeting extends StatelessWidget {
   const HomeGreeting({
     super.key,
     required this.firstName,
-    required this.hasNotifications,
+    required this.unreadCount,
     required this.onNotificationsTap,
   });
 
@@ -20,7 +20,10 @@ class HomeGreeting extends StatelessWidget {
   /// salutation alone.
   final String? firstName;
 
-  final bool hasNotifications;
+  /// Number of unread notifications — drives the badge displayed on top
+  /// of the bell. Renders "9+" when above 9, hides the badge at 0.
+  final int unreadCount;
+
   final VoidCallback onNotificationsTap;
 
   @override
@@ -60,7 +63,7 @@ class HomeGreeting extends StatelessWidget {
           ),
         ),
         _NotificationBell(
-          hasUnread: hasNotifications,
+          unreadCount: unreadCount,
           onTap: onNotificationsTap,
         ),
       ],
@@ -76,13 +79,15 @@ class HomeGreeting extends StatelessWidget {
 }
 
 class _NotificationBell extends StatelessWidget {
-  const _NotificationBell({required this.hasUnread, required this.onTap});
+  const _NotificationBell({required this.unreadCount, required this.onTap});
 
-  final bool hasUnread;
+  final int unreadCount;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final hasUnread = unreadCount > 0;
+    final label = unreadCount > 9 ? '9+' : '$unreadCount';
     return Material(
       color: const Color(0xFF1A113F),
       borderRadius: BorderRadius.circular(9),
@@ -97,6 +102,7 @@ class _NotificationBell extends StatelessWidget {
             border: Border.all(color: const Color(0xFF3A1E74)),
           ),
           child: Stack(
+            clipBehavior: Clip.none,
             children: [
               Center(
                 child: SvgPicture.asset(
@@ -111,14 +117,30 @@ class _NotificationBell extends StatelessWidget {
               ),
               if (hasUnread)
                 Positioned(
-                  top: 8,
-                  right: 8,
+                  top: -4,
+                  right: -4,
                   child: Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
+                    constraints: const BoxConstraints(minWidth: 16),
+                    height: 16,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
                       color: AppColors.naranja,
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF1A113F),
+                        width: 1.5,
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w700,
+                        fontSize: 9,
+                        height: 1,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
