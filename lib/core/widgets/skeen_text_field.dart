@@ -17,6 +17,7 @@ class SkeenTextField extends StatefulWidget {
     this.onChanged,
     this.textInputAction,
     this.autofillHints,
+    this.scrollPadding = const EdgeInsets.all(20),
   });
 
   final String label;
@@ -30,6 +31,9 @@ class SkeenTextField extends StatefulWidget {
   final ValueChanged<String>? onChanged;
   final TextInputAction? textInputAction;
   final Iterable<String>? autofillHints;
+  // Reserves space below the field so the helper panel that appears on
+  // focus is also scrolled above the keyboard (not just the input row).
+  final EdgeInsets scrollPadding;
 
   static const Color _labelColor = Color(0xFF817691);
 
@@ -83,6 +87,7 @@ class _SkeenTextFieldState extends State<SkeenTextField> {
           onChanged: widget.onChanged,
           textInputAction: widget.textInputAction,
           autofillHints: widget.autofillHints,
+          scrollPadding: widget.scrollPadding,
           cursorColor: AppColors.violetaLink,
           style: const TextStyle(
             fontFamily: 'Poppins',

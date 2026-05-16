@@ -53,6 +53,11 @@ class _SkeenPasswordFieldState extends State<SkeenPasswordField> {
       onChanged: widget.onChanged,
       textInputAction: widget.textInputAction,
       autofillHints: const [AutofillHints.password],
+      // The rules panel adds ~150px below the field. Reserve enough room
+      // so it stays visible above the keyboard when the field is focused.
+      scrollPadding: widget.showRulesHelper
+          ? const EdgeInsets.fromLTRB(20, 20, 20, 180)
+          : const EdgeInsets.all(20),
       suffix: IconButton(
         splashRadius: 18,
         onPressed: () => setState(() => _obscured = !_obscured),

@@ -102,10 +102,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final isSubmitting = ref.watch(
       authControllerProvider.select((s) => s.isSubmitting),
     );
-    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
-      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -113,7 +111,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: SingleChildScrollView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.only(bottom: keyboardInset + 24),
+              padding: const EdgeInsets.only(bottom: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

@@ -138,16 +138,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     final isSubmitting = ref.watch(
       authControllerProvider.select((s) => s.isSubmitting),
     );
-    final keyboardInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       backgroundColor: AppColors.background,
-      // ``resizeToAvoidBottomInset: false`` + manual bottom padding equal
-      // to ``viewInsets.bottom`` is the proven pattern to scroll focused
-      // fields cleanly above the keyboard. The default resize collapses
-      // the viewport but Flutter's auto-ensure-visible can still leave
-      // the focused input flush against the keyboard with no breathing
-      // room (which is exactly what was hiding the next input here).
-      resizeToAvoidBottomInset: false,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -155,7 +147,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             child: SingleChildScrollView(
               keyboardDismissBehavior:
                   ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: EdgeInsets.only(bottom: keyboardInset + 24),
+              padding: const EdgeInsets.only(bottom: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -215,6 +207,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ],
                     textInputAction: TextInputAction.next,
                     errorText: _submitted ? _dniError : null,
+                    scrollPadding:
+                        const EdgeInsets.fromLTRB(20, 20, 20, 80),
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.info_outline,
                       message:
@@ -230,6 +224,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.email],
                     errorText: _submitted ? _emailError : null,
+                    scrollPadding:
+                        const EdgeInsets.fromLTRB(20, 20, 20, 80),
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.alternate_email,
                       message: 'Use a valid format, e.g. name@example.com.',
@@ -250,6 +246,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.telephoneNumber],
                     errorText: _submitted ? _phoneError : null,
+                    scrollPadding:
+                        const EdgeInsets.fromLTRB(20, 20, 20, 80),
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.phone_outlined,
                       message:
