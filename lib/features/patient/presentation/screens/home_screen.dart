@@ -115,6 +115,17 @@ class HomeScreen extends ConsumerWidget {
                                     ],
                                   ),
                                   const SizedBox(height: 16),
+                                  const Text(
+                                    'TEMPERATURE',
+                                    style: TextStyle(
+                                      fontFamily: 'Poppins',
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                      letterSpacing: 0.6,
+                                      color: Color(0xFF6B6098),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
                                   _TemperatureSlot(environment: environment),
                                   const SizedBox(height: 18),
                                   _BodyMapSlot(

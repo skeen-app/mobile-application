@@ -52,7 +52,6 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             _Header(
               hasItems: state.items.isNotEmpty,
               onClearAll: () => _confirmClearAll(context),
-              onSettings: () => context.pushNamed('notifications-settings'),
             ),
             Expanded(
               child: state.items.isEmpty
@@ -147,12 +146,10 @@ class _Header extends StatelessWidget {
   const _Header({
     required this.hasItems,
     required this.onClearAll,
-    required this.onSettings,
   });
 
   final bool hasItems;
   final VoidCallback onClearAll;
-  final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -163,33 +160,20 @@ class _Header extends StatelessWidget {
           subtitle: 'your activity',
           showBack: true,
         ),
-        Positioned(
-          right: 12,
-          top: 18,
-          child: Row(
-            children: [
-              IconButton(
-                tooltip: 'Notification preferences',
-                icon: const Icon(
-                  Icons.tune_rounded,
-                  size: 20,
-                  color: AppColors.violetaClaro,
-                ),
-                onPressed: onSettings,
+        if (hasItems)
+          Positioned(
+            right: 12,
+            top: 18,
+            child: IconButton(
+              tooltip: 'Clear all',
+              icon: const Icon(
+                Icons.delete_sweep_outlined,
+                size: 20,
+                color: AppColors.violetaClaro,
               ),
-              if (hasItems)
-                IconButton(
-                  tooltip: 'Clear all',
-                  icon: const Icon(
-                    Icons.delete_sweep_outlined,
-                    size: 20,
-                    color: AppColors.violetaClaro,
-                  ),
-                  onPressed: onClearAll,
-                ),
-            ],
+              onPressed: onClearAll,
+            ),
           ),
-        ),
       ],
     );
   }

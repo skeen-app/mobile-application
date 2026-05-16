@@ -8,7 +8,6 @@ import '../../features/auth/presentation/screens/complete_profile_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_screen.dart';
 import '../../features/auth/presentation/screens/forgot_password_success_screen.dart';
 import '../../features/auth/presentation/screens/login_screen.dart';
-import '../../features/auth/presentation/screens/notifications_settings_screen.dart';
 import '../../features/auth/presentation/screens/onboarding_screen.dart';
 import '../../features/auth/presentation/screens/permissions_screen.dart';
 import '../../features/auth/presentation/screens/personal_information_screen.dart';
@@ -245,11 +244,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'privacy-security',
             name: 'privacy-security',
             builder: (context, state) => const PrivacySecurityScreen(),
-          ),
-          GoRoute(
-            path: 'notification-preferences',
-            name: 'notifications-settings',
-            builder: (context, state) => const NotificationsSettingsScreen(),
           ),
         ],
       ),

@@ -187,6 +187,31 @@ class _PersonalInformationScreenState
     );
   }
 
+  /// Masks a DNI so only the first 2 and last 1 characters are visible.
+  /// Example: '72345678' → '72•••••8'
+  static String _maskDni(String dni) {
+    if (dni.length <= 3) return dni;
+    final visible = dni.substring(0, 2);
+    final last = dni.substring(dni.length - 1);
+    final masked = '•' * (dni.length - 3);
+    return '$visible$masked$last';
+  }
+
+  /// Masks an email — first 2 local-part characters + '***@domain'.
+  /// Matches the masking used in the password-change popup.
+  static String _maskEmail(String email) {
+    try {
+      final parts = email.split('@');
+      if (parts.length != 2) return email;
+      final local = parts[0];
+      final domain = parts[1];
+      if (local.length <= 2) return '$local***@$domain';
+      return '${local.substring(0, 2)}***@$domain';
+    } catch (_) {
+      return email;
+    }
+  }
+
   void _onTabSelected(SkeenNavTab tab) {
     switch (tab) {
       case SkeenNavTab.home:
@@ -269,14 +294,14 @@ class _PersonalInformationScreenState
                               const SizedBox(height: 12),
                               _LockedField(
                                 label: 'DNI',
-                                value: user.dni,
+                                value: _maskDni(user.dni),
                                 hint:
                                     'Government ID — contact support to change.',
                               ),
                               const SizedBox(height: 12),
                               _LockedField(
                                 label: 'Email',
-                                value: user.email,
+                                value: _maskEmail(user.email),
                                 hint:
                                     'Used to sign in — change is not yet supported.',
                               ),

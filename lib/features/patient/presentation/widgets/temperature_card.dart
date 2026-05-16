@@ -9,6 +9,10 @@ import 'uv_index_dial.dart';
 ///
 /// Renders three states from `environmentProvider`: loaded reading, loading
 /// shimmer, and error fallback (e.g. denied location permission).
+///
+/// Layout adapts via `LayoutBuilder`: when the card is wide enough (≥ 340 lp)
+/// the temperature info and UV dial sit side-by-side; otherwise they stack
+/// vertically so nothing gets clipped on narrow devices.
 class TemperatureCard extends StatelessWidget {
   const TemperatureCard.loaded({super.key, required EnvironmentReading reading})
     : _reading = reading,
@@ -32,31 +36,43 @@ class TemperatureCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(minHeight: 138),
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFF1E1444),
         borderRadius: BorderRadius.circular(9),
         border: Border.all(color: const Color(0xFF5D3034)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: _buildLeft()),
-          const SizedBox(width: 8),
-          if (_reading != null)
-            UvIndexDial(uvIndex: _reading.uvIndex)
-          else
-            const SizedBox(width: 96, height: 96),
-        ],
-      ),
+      child: _isLoading
+          ? const _LoadingLeft()
+          : _errorLabel != null
+              ? _ErrorLeft(message: _errorLabel)
+              : _LoadedBody(reading: _reading!),
     );
   }
+}
 
-  Widget _buildLeft() {
-    if (_isLoading) return const _LoadingLeft();
-    if (_errorLabel != null) return _ErrorLeft(message: _errorLabel);
-    return _ReadingLeft(reading: _reading!);
+/// Loaded state — adaptively lays out temperature info + UV dial.
+class _LoadedBody extends StatelessWidget {
+  const _LoadedBody({required this.reading});
+  final EnvironmentReading reading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: _ReadingLeft(reading: reading)),
+            const SizedBox(width: 8),
+            UvIndexDial(uvIndex: reading.uvIndex, size: 96),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const _UvDisclaimer(),
+      ],
+    );
   }
 }
 
@@ -179,6 +195,35 @@ class _ReadingLeft extends StatelessWidget {
               height: 1.4,
               letterSpacing: 0.6,
               color: AppColors.naranja,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Subtle disclaimer below the UV section.
+class _UvDisclaimer extends StatelessWidget {
+  const _UvDisclaimer();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Icon(Icons.info_outline_rounded, size: 12, color: AppColors.stroke),
+        SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            'UV data is approximate. Always consult local weather sources.',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: 'Poppins',
+              fontWeight: FontWeight.w400,
+              fontSize: 10,
+              height: 1.4,
+              color: AppColors.stroke,
             ),
           ),
         ),

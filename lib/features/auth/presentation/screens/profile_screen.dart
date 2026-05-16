@@ -303,7 +303,7 @@ class _ProfileHeader extends StatelessWidget {
           if ((user?.email ?? '').isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
-              user!.email,
+              _maskEmail(user!.email),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -319,6 +319,19 @@ class _ProfileHeader extends StatelessWidget {
       ),
     );
   }
+
+  static String _maskEmail(String email) {
+    try {
+      final parts = email.split('@');
+      if (parts.length != 2) return email;
+      final local = parts[0];
+      final domain = parts[1];
+      if (local.length <= 2) return '$local***@$domain';
+      return '${local.substring(0, 2)}***@$domain';
+    } catch (_) {
+      return email;
+    }
+  }
 }
 
 class _StatsRow extends StatelessWidget {
@@ -331,7 +344,7 @@ class _StatsRow extends StatelessWidget {
     final molesText = summary.isLoading && value == null
         ? '—'
         : (value?.registeredMoles ?? 0).toString();
-    final nextCheckupText = _formatNextCheckup(value?.nextCheckupAt);
+    final nextCheckupText = _formatNextCheckup(value);
 
     return Row(
       children: [
@@ -368,9 +381,19 @@ class _StatsRow extends StatelessWidget {
     'December',
   ];
 
-  String _formatNextCheckup(DateTime? at) {
-    if (at == null) return 'No scans yet';
-    return '${_months[at.month - 1]} ${at.year}';
+  String _formatNextCheckup(PatientProfileSummary? summary) {
+    if (summary == null) return 'No scans yet';
+    final at = summary.nextCheckupAt;
+    // User has an explicit reminder → show the reminder date.
+    if (at != null && summary.hasExplicitReminder) {
+      return '${_months[at.month - 1]} ${at.year}';
+    }
+    // User has scanned (via nextCheckupAt heuristic OR moles registered)
+    // but no reminder → show "Next month".
+    if (at != null || summary.registeredMoles > 0) {
+      return 'Next month';
+    }
+    return 'No scans yet';
   }
 }
 
@@ -402,12 +425,6 @@ class _SettingsSection extends StatelessWidget {
             iconAsset: 'assets/images/profile/privacy_security.svg',
             label: 'Privacy & Security',
             onTap: () => context.pushNamed('privacy-security'),
-          ),
-          const _Divider(),
-          ProfileSettingsRow(
-            iconAsset: 'assets/images/profile/notifications.svg',
-            label: 'Notifications',
-            onTap: () => context.pushNamed('notifications'),
           ),
         ],
       ),
