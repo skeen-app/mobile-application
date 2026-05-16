@@ -9,6 +9,7 @@ import '../../../../core/logger/app_logger.dart';
 import '../../../../core/network/api_exception.dart';
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/full_screen_image_viewer.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../patient/application/lesion_summary_providers.dart';
@@ -261,38 +262,44 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
   Widget _buildImageCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 21),
-      child: AspectRatio(
-        aspectRatio: 1.5,
-        child: Container(
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.violetaOscuro, width: 2),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.memory(
-                  widget.capturedImageBytes,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, e, st) => Container(
-                    color: AppColors.indigo,
-                    child: const Center(
-                      child: Icon(
-                        Icons.broken_image_outlined,
-                        color: AppColors.hintText,
-                        size: 48,
+      child: GestureDetector(
+        onTap: () => FullScreenImageViewer.showMemory(
+          context,
+          bytes: widget.capturedImageBytes,
+        ),
+        child: AspectRatio(
+          aspectRatio: 1.5,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.violetaOscuro, width: 2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.memory(
+                    widget.capturedImageBytes,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, e, st) => Container(
+                      color: AppColors.indigo,
+                      child: const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: AppColors.hintText,
+                          size: 48,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const Positioned(
-                  top: 12,
-                  right: 12,
-                  child: QualityVerifiedBadge(),
-                ),
-              ],
+                  const Positioned(
+                    top: 12,
+                    right: 12,
+                    child: QualityVerifiedBadge(),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

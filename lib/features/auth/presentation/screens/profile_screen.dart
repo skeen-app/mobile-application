@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/full_screen_image_viewer.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -87,7 +88,18 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                                   _ProfileHeader(
                                     user: user,
                                     avatarRefreshToken: _avatarRefreshToken,
-                                    onAvatarTap: () =>
+                                    onAvatarTap: () {
+                                      final url = user?.avatarUrl;
+                                      if (url != null && url.isNotEmpty) {
+                                        FullScreenImageViewer.showNetwork(
+                                          context,
+                                          url: url,
+                                        );
+                                      } else {
+                                        _onAvatarTap(context, ref, user);
+                                      }
+                                    },
+                                    onAvatarLongPress: () =>
                                         _onAvatarTap(context, ref, user),
                                   ),
                                   const SizedBox(height: 18),
@@ -265,11 +277,13 @@ class _ProfileHeader extends StatelessWidget {
     required this.user,
     required this.avatarRefreshToken,
     required this.onAvatarTap,
+    this.onAvatarLongPress,
   });
 
   final RegisteredUser? user;
   final int avatarRefreshToken;
   final VoidCallback onAvatarTap;
+  final VoidCallback? onAvatarLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -285,6 +299,7 @@ class _ProfileHeader extends StatelessWidget {
           ProfileAvatar(
             photoUrl: user?.avatarUrl,
             onTap: onAvatarTap,
+            onLongPress: onAvatarLongPress,
             refreshToken: avatarRefreshToken,
           ),
           const SizedBox(height: 12),

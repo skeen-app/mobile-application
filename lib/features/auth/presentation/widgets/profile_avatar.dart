@@ -19,12 +19,14 @@ class ProfileAvatar extends StatelessWidget {
     super.key,
     required this.photoUrl,
     required this.onTap,
+    this.onLongPress,
     this.size = 96,
     this.refreshToken = 0,
   });
 
   final String? photoUrl;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final double size;
   final int refreshToken;
 
@@ -37,6 +39,7 @@ class ProfileAvatar extends StatelessWidget {
       child: InkWell(
         customBorder: const CircleBorder(),
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Container(
           width: size,
           height: size,
