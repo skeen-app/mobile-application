@@ -32,6 +32,21 @@ class LesionSummaryRepository {
     final remote = (await _fetchRemote())
         .where((s) => !pendingDeletion.contains(s.id))
         .toList();
+
+    // Same cache-on-fetch trick as the history repo: rehydrate the local
+    // DB so a tap on a body-map dot — which routes through the detail
+    // screen's findById — works after a session purge.
+    for (final r in remote) {
+      try {
+        await localRepository.upsertCloudSnapshot(r);
+      } catch (e) {
+        AppLogger.warning(
+          'LesionSummary: failed to cache cloud snapshot ${r.id}: $e',
+          tag: 'LesionSummary',
+        );
+      }
+    }
+
     final pending = await _fetchLocalPending(
       excludingRemoteIds: remote.map((s) => s.id).toSet(),
     );

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
@@ -14,7 +15,9 @@ import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
 import '../../../auth/application/auth_controller.dart';
+import '../../../auth/application/privacy_settings.dart';
 import '../../application/providers.dart';
+import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/class_label.dart';
 import '../widgets/body_region_picker.dart';
@@ -161,13 +164,19 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
         frameWidth: size.width,
         frameHeight: size.height,
       );
+      // Same sync-intent contract as the camera capture flow:
+      //   cloud sync ON  → pendingUpload, attempt inline upload if online
+      //   cloud sync OFF → localOnly, "Not synced" badge in history.
+      final cloudSyncEnabled =
+          ref.read(privacySettingsProvider).cloudSyncEnabled;
       final analysis = mapper.toAnalysis(
         result: result,
         boundingBox: bbox,
         patientId: patientId,
         bodyRegion: region,
         imageHash: hash,
-        pendingUpload: true,
+        pendingUpload: cloudSyncEnabled,
+        localOnly: !cloudSyncEnabled,
       );
       await repo.save(analysis, jpegBytes: bytes);
 
@@ -188,6 +197,10 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
         );
       }
 
+      if (cloudSyncEnabled && await _isOnline()) {
+        await ref.read(syncOrchestratorProvider).uploadOne(analysis);
+      }
+
       if (!mounted) return;
       context.pushReplacementNamed(
         'triage-result',
@@ -204,6 +217,17 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
         _error = 'Analysis failed. Please try again.';
       });
     }
+  }
+
+  Future<bool> _isOnline() async {
+    final results = await Connectivity().checkConnectivity();
+    return results.any(
+      (r) =>
+          r == ConnectivityResult.wifi ||
+          r == ConnectivityResult.mobile ||
+          r == ConnectivityResult.ethernet ||
+          r == ConnectivityResult.vpn,
+    );
   }
 
   // ── UI ──────────────────────────────────────────────────────────────

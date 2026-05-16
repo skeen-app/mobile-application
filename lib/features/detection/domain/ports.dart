@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'ar_geometry.dart';
 import 'inference_result.dart';
 import 'lesion_analysis.dart';
+import 'scan_remote.dart';
 
 /// Outbound port for the on-device TFLite classifier. Implementations live
 /// in `infrastructure/` (real `tflite_flutter` runtime, web mock, test
@@ -117,9 +118,17 @@ abstract class LesionRepositoryPort {
   /// ``true`` so the next sync uploads the updated value.
   Future<void> updateBodyRegion(String id, String? bodyRegion);
 
-  /// Records pending cloud upload (future feature). Schema-ready.
-  Future<List<LesionAnalysis>> findPendingUpload();
+  /// Pending cloud-upload rows for a specific patient. Scoped per
+  /// patient_id so a stale row from a logged-out user can never be
+  /// uploaded under a different account's token.
+  Future<List<LesionAnalysis>> findPendingUpload(String patientId);
   Future<void> markUploaded(String id);
+
+  /// Wipes every row in the local table. Called at session boundaries
+  /// (sign-out, login as a different user) so a fresh account never
+  /// observes the previous user's pending scans, body-map dots, or
+  /// "pending sync" badge.
+  Future<void> clearAll();
 
   /// Flips the row to "queued for cloud deletion". Used when the user
   /// asks to delete an already-uploaded scan but the device is offline:
@@ -132,4 +141,14 @@ abstract class LesionRepositoryPort {
   ///    they don't reappear while waiting for the backend ack.
   ///  - The sync orchestrator drains them via DELETE on each run.
   Future<List<String>> findPendingDeletionIds();
+
+  /// Persists the metadata of a cloud-stored scan so the detail flow
+  /// finds it locally on the next session — without re-downloading the
+  /// image (the JPEG is fetched on-demand from the signed URL).
+  ///
+  /// Skipped when a row with the same id already exists locally, so an
+  /// in-progress capture (`pending_upload = 1`) or a row carrying the
+  /// real inference probabilities is never overwritten by the lossy
+  /// cloud snapshot.
+  Future<void> upsertCloudSnapshot(ScanRemote remote);
 }

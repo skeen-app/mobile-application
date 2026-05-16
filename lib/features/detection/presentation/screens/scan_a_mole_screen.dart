@@ -327,9 +327,10 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                   child: Container(color: Colors.white),
                 ),
 
-                // Analyzing overlay
+                // Analyzing / uploading overlay
                 if (detection.phase == DetectionPhase.analyzing ||
-                    detection.phase == DetectionPhase.standardizing)
+                    detection.phase == DetectionPhase.standardizing ||
+                    detection.phase == DetectionPhase.uploading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.35),
                     child: Center(
@@ -343,9 +344,13 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            detection.phase == DetectionPhase.standardizing
-                                ? 'Standardizing image…'
-                                : 'Running on-device analysis…',
+                            switch (detection.phase) {
+                              DetectionPhase.standardizing =>
+                                'Standardizing image…',
+                              DetectionPhase.uploading =>
+                                'Uploading to cloud…',
+                              _ => 'Running on-device analysis…',
+                            },
                             style: const TextStyle(
                               fontFamily: 'Poppins',
                               color: AppColors.violetaClaro,
@@ -368,7 +373,8 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     final isPresented = detection.phase == DetectionPhase.presented;
     final isBusy = detection.phase == DetectionPhase.capturing ||
         detection.phase == DetectionPhase.analyzing ||
-        detection.phase == DetectionPhase.standardizing;
+        detection.phase == DetectionPhase.standardizing ||
+        detection.phase == DetectionPhase.uploading;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),

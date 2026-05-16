@@ -5,16 +5,22 @@ import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+import '../../../core/logger/app_logger.dart';
 import '../../../core/notifications/notifications_controller.dart';
 import '../../auth/application/auth_controller.dart';
+import '../../auth/application/privacy_settings.dart';
 import '../domain/ar_geometry.dart';
 import '../domain/capture_quality.dart';
 import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
+import '../domain/lesion_analysis.dart';
 import '../domain/ports.dart';
 import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
 import 'providers.dart';
+import 'sync_orchestrator.dart';
 
 /// Phases of the AR-AI bridge flow, exposed to the UI as a single state
 /// stream so the presentation layer can react declaratively rather than
@@ -26,6 +32,10 @@ enum DetectionPhase {
   capturing,
   standardizing,
   analyzing,
+  // The post-inference step where, with cloud sync consent + connectivity,
+  // we synchronously push the freshly captured scan to the cloud before
+  // showing the result. Guarantees the row survives a quick sign-out.
+  uploading,
   presented,
   failed,
 }
@@ -107,6 +117,9 @@ class DetectionController extends StateNotifier<DetectionState> {
     required DetectionResultMapper mapper,
     required LesionRepositoryPort repository,
     required this.patientId,
+    required this.cloudSyncEnabledReader,
+    required this.isOnlineChecker,
+    required this.uploadScan,
     NotificationsController? notifications,
     void Function()? onScanSaved,
   })  : _session = session,
@@ -128,6 +141,15 @@ class DetectionController extends StateNotifier<DetectionState> {
   final NotificationsController? _notifications;
   final void Function()? _onScanSaved;
   final String patientId;
+
+  /// Resolves the user's current cloud-sync consent at capture time.
+  final bool Function() cloudSyncEnabledReader;
+  /// Returns true when the device has any kind of network reachability.
+  final Future<bool> Function() isOnlineChecker;
+  /// Pushes a single scan to the cloud now. The capture flow awaits this
+  /// before transitioning to [DetectionPhase.presented] so a scan can't be
+  /// lost to a quick sign-out before the orchestrator's next tick.
+  final Future<bool> Function(LesionAnalysis) uploadScan;
 
   StreamSubscription<CaptureDistance>? _distanceSub;
 
@@ -299,6 +321,14 @@ class DetectionController extends StateNotifier<DetectionState> {
         frameHeight: previewSize.height,
       );
 
+      // Decide the row's sync intent at capture time so the bookkeeping
+      // matches reality before we even touch the DB:
+      //   • cloudSyncEnabled = true  → eligible for cloud upload
+      //       - online  → mark pendingUpload, attempt sync inline below
+      //       - offline → mark pendingUpload, orchestrator retries later
+      //   • cloudSyncEnabled = false → localOnly, never enters the queue,
+      //       surfaces as "Not synced" instead of "Pending" in the UI.
+      final cloudSyncEnabled = cloudSyncEnabledReader();
       final analysis = _mapper.toAnalysis(
         result: result,
         boundingBox: bbox,
@@ -306,10 +336,8 @@ class DetectionController extends StateNotifier<DetectionState> {
         anchor: anchor,
         distanceCm: state.distance.isKnown ? state.distance.cm : null,
         imageHash: hash,
-        // Queue every freshly captured scan for cloud sync — the
-        // [SyncOrchestrator] only actually uploads when the user has
-        // opted in via privacy settings.
-        pendingUpload: true,
+        pendingUpload: cloudSyncEnabled,
+        localOnly: !cloudSyncEnabled,
       );
 
       // Persist encrypted (metadata + image blob AES-256)
@@ -336,9 +364,24 @@ class DetectionController extends StateNotifier<DetectionState> {
         );
       }
 
-      // Fire-and-forget cloud sync — no-op when offline / opted out.
-      // The user proceeds without waiting; the orchestrator retries on
-      // the next foreground or connectivity-restored event.
+      // Prioritise the cloud upload: when consent is on AND the device is
+      // online, await the upload before showing the result so the row
+      // can't be lost to an immediate sign-out (which purges the local
+      // DB). When offline, the row stays pending and the orchestrator
+      // drains the queue on the next connectivity event. Notify the host
+      // either way so the home counts/history list refresh.
+      if (cloudSyncEnabled && await isOnlineChecker()) {
+        if (!mounted) return;
+        state = state.copyWith(phase: DetectionPhase.uploading);
+        final ok = await uploadScan(analysis);
+        if (!ok) {
+          AppLogger.warning(
+            'Inline cloud upload failed for ${analysis.id} — '
+            'row stays pending for the next sync trigger',
+            tag: 'Detection',
+          );
+        }
+      }
       _onScanSaved?.call();
 
       if (!mounted) return;
@@ -407,6 +450,7 @@ final detectionControllerProvider =
     StateNotifierProvider.autoDispose<DetectionController, DetectionState>(
   (ref) {
     final user = ref.watch(authControllerProvider).user;
+    final orchestrator = ref.read(syncOrchestratorProvider);
     return DetectionController(
       session: ref.watch(arSessionProvider),
       inference: ref.watch(inferenceServiceProvider),
@@ -415,6 +459,19 @@ final detectionControllerProvider =
       mapper: ref.watch(detectionResultMapperProvider),
       repository: ref.watch(lesionRepositoryProvider),
       patientId: user?.id ?? 'anonymous',
+      cloudSyncEnabledReader: () =>
+          ref.read(privacySettingsProvider).cloudSyncEnabled,
+      isOnlineChecker: () async {
+        final results = await Connectivity().checkConnectivity();
+        return results.any(
+          (r) =>
+              r == ConnectivityResult.wifi ||
+              r == ConnectivityResult.mobile ||
+              r == ConnectivityResult.ethernet ||
+              r == ConnectivityResult.vpn,
+        );
+      },
+      uploadScan: orchestrator.uploadOne,
       notifications: ref.read(notificationsControllerProvider.notifier),
       onScanSaved: () => _postCaptureHook?.call(),
     )..bootstrap();

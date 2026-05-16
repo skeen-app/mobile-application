@@ -32,6 +32,7 @@ class SyncOrchestrator {
     required this.repository,
     required this.api,
     required this.tokenReader,
+    required this.patientIdReader,
     required this.cloudSyncEnabledReader,
     this.notifications,
   });
@@ -39,6 +40,11 @@ class SyncOrchestrator {
   final LesionRepositoryPort repository;
   final ScansApi api;
   final String? Function() tokenReader;
+  // Resolves the current authenticated user id at call time. Returning
+  // null means "no active session" — the orchestrator must not touch the
+  // local database in that state (would risk uploading a stale row from
+  // a previous user under a different token).
+  final String? Function() patientIdReader;
   final bool Function() cloudSyncEnabledReader;
   final NotificationsController? notifications;
 
@@ -77,6 +83,14 @@ class SyncOrchestrator {
       AppLogger.info('SyncOrchestrator: no token, skipping ($reason)', tag: 'Sync');
       return 0;
     }
+    final patientId = patientIdReader();
+    if (patientId == null) {
+      AppLogger.info(
+        'SyncOrchestrator: no current patient, skipping ($reason)',
+        tag: 'Sync',
+      );
+      return 0;
+    }
     final connectivity = await Connectivity().checkConnectivity();
     if (!connectivity.any(_isOnline)) {
       AppLogger.info('SyncOrchestrator: offline, skipping ($reason)', tag: 'Sync');
@@ -91,7 +105,7 @@ class SyncOrchestrator {
     _running = true;
     var uploaded = 0;
     try {
-      final pending = await repository.findPendingUpload();
+      final pending = await repository.findPendingUpload(patientId);
       if (pending.isEmpty) {
         AppLogger.info('SyncOrchestrator: nothing to upload ($reason)', tag: 'Sync');
         return 0;
@@ -101,12 +115,8 @@ class SyncOrchestrator {
         tag: 'Sync',
       );
       for (final analysis in pending) {
-        final ok = await _uploadOne(analysis, token);
-        if (ok) {
-          await repository.markUploaded(analysis.id);
-          uploaded += 1;
-          notifications?.recordScanSyncedToCloud(scanId: analysis.id);
-        }
+        final ok = await uploadOne(analysis);
+        if (ok) uploaded += 1;
       }
 
       // Drain any rows the user marked for deletion while offline. Each
@@ -136,7 +146,27 @@ class SyncOrchestrator {
     return uploaded;
   }
 
-  Future<bool> _uploadOne(LesionAnalysis analysis, String token) async {
+  /// Push a single scan to the cloud now — used by the capture flow to
+  /// upload the freshly captured row before the user can navigate (or
+  /// log out) and lose it. Returns true on success and writes the
+  /// follow-up bookkeeping (`markUploaded`, activity-log entry).
+  ///
+  /// No-ops when the session is gone or cloud sync is disabled. Does NOT
+  /// take the running-lock — safe to call concurrently with [syncNow].
+  Future<bool> uploadOne(LesionAnalysis analysis) async {
+    if (!cloudSyncEnabledReader()) return false;
+    final token = tokenReader();
+    if (token == null) return false;
+
+    final ok = await _doUpload(analysis, token);
+    if (ok) {
+      await repository.markUploaded(analysis.id);
+      notifications?.recordScanSyncedToCloud(scanId: analysis.id);
+    }
+    return ok;
+  }
+
+  Future<bool> _doUpload(LesionAnalysis analysis, String token) async {
     try {
       final fullRecord = await _loadWithImage(analysis.id);
       if (fullRecord == null) return false;
@@ -297,6 +327,7 @@ final syncOrchestratorProvider = Provider<SyncOrchestrator>((ref) {
     repository: ref.watch(lesionRepositoryProvider),
     api: ref.watch(scansApiProvider),
     tokenReader: () => ref.read(authControllerProvider).token?.value,
+    patientIdReader: () => ref.read(authControllerProvider).user?.id,
     cloudSyncEnabledReader: () =>
         ref.read(privacySettingsProvider).cloudSyncEnabled,
     notifications: ref.read(notificationsControllerProvider.notifier),
@@ -306,12 +337,16 @@ final syncOrchestratorProvider = Provider<SyncOrchestrator>((ref) {
 });
 
 /// Pending upload counter — surfaces the "pending sync" badge on the home
-/// dashboard so the user knows their offline scans are queued.
+/// dashboard so the user knows their offline scans are queued. Watches
+/// the auth state so the badge resets to zero on sign-out and rebinds to
+/// the new user's queue after a fresh login.
 final pendingScanCountProvider = FutureProvider<int>((ref) async {
+  final user = ref.watch(authControllerProvider).user;
+  if (user == null) return 0;
   final repo = ref.watch(lesionRepositoryProvider);
   if (repo is SecureLesionRepository) {
     await repo.initialize();
   }
-  final pending = await repo.findPendingUpload();
+  final pending = await repo.findPendingUpload(user.id);
   return pending.length;
 });

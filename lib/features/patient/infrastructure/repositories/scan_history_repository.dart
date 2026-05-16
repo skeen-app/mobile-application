@@ -44,6 +44,22 @@ class HttpScanHistoryRepository implements ScanHistoryRepository {
     final remote = (await _fetchRemote())
         .where((s) => !pendingDeletion.contains(s.id))
         .toList();
+
+    // Mirror each cloud row into the local DB so the detail screen can
+    // resolve it by id after a logout-induced purge. ``upsertCloudSnapshot``
+    // is a no-op when the row already exists, so this is cheap on repeat
+    // fetches and never overwrites a locally-captured row.
+    for (final r in remote) {
+      try {
+        await localRepository.upsertCloudSnapshot(r);
+      } catch (e) {
+        AppLogger.warning(
+          'History: failed to cache cloud snapshot ${r.id}: $e',
+          tag: 'History',
+        );
+      }
+    }
+
     final pending = await _fetchLocalPending(
       excludingRemoteIds: remote.map((s) => s.id).toSet(),
     );
@@ -96,7 +112,12 @@ class HttpScanHistoryRepository implements ScanHistoryRepository {
       region: region,
       riskLevel: _riskFromWarning(a.result.warningLevel.name),
       scannedAt: a.capturedAt,
-      pendingSync: true,
+      // localOnly wins over pendingUpload: a row captured with cloud
+      // sync OFF is never going to upload, so the badge must reflect a
+      // permanent state ("Not synced") instead of a transient queue.
+      syncStatus: a.localOnly
+          ? ScanSyncStatus.notSynced
+          : ScanSyncStatus.pending,
     );
   }
 

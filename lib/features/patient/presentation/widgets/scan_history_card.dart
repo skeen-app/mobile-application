@@ -63,9 +63,9 @@ class ScanHistoryCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (entry.pendingSync) ...[
+                        if (entry.syncStatus != ScanSyncStatus.synced) ...[
                           const SizedBox(width: 8),
-                          const _PendingSyncBadge(),
+                          _SyncStatusBadge(status: entry.syncStatus),
                         ],
                       ],
                     ),
@@ -208,31 +208,48 @@ class _Placeholder extends StatelessWidget {
   }
 }
 
-class _PendingSyncBadge extends StatelessWidget {
-  const _PendingSyncBadge();
+/// Pill that surfaces the cloud-sync state of a scan. Two variants:
+///   • Pending   — purple, cloud-upload icon. The row is queued and will
+///                 upload as soon as the device gets back online.
+///   • Not synced — grey, cloud-off icon. The user disabled cloud sync,
+///                  so the row is permanently on-device only.
+class _SyncStatusBadge extends StatelessWidget {
+  const _SyncStatusBadge({required this.status});
+
+  final ScanSyncStatus status;
 
   @override
   Widget build(BuildContext context) {
+    final isPending = status == ScanSyncStatus.pending;
+    final fg = isPending ? const Color(0xFF9B8DEB) : const Color(0xFF8A8295);
+    final bg = isPending ? const Color(0xFF2A1F5C) : const Color(0xFF272235);
+    final border =
+        isPending ? const Color(0xFF6B58C4) : const Color(0xFF4A4455);
+    final icon = isPending
+        ? Icons.cloud_upload_outlined
+        : Icons.cloud_off_outlined;
+    final label = isPending ? 'Pending' : 'Not synced';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: const Color(0xFF2A1F5C),
-        border: Border.all(color: const Color(0xFF6B58C4)),
+        color: bg,
+        border: Border.all(color: border),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cloud_upload_outlined, size: 10, color: Color(0xFF9B8DEB)),
-          SizedBox(width: 4),
+          Icon(icon, size: 10, color: fg),
+          const SizedBox(width: 4),
           Text(
-            'Pending',
+            label,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,
               fontSize: 9,
               letterSpacing: 0.2,
-              color: Color(0xFF9B8DEB),
+              color: fg,
             ),
           ),
         ],

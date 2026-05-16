@@ -8,7 +8,9 @@ import 'package:http/http.dart' as http;
 
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../auth/application/auth_controller.dart';
 import '../../application/providers.dart';
+import '../../application/sync_orchestrator.dart';
 import '../../domain/lesion_analysis.dart';
 import 'triage_result_screen.dart';
 
@@ -48,7 +50,10 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
       final repo = ref.read(lesionRepositoryProvider);
       await repo.initialize();
       final analysis = await repo.findById(widget.scanId, includeImage: true);
-      if (analysis != null) {
+
+      // Path 1: fully local row (captured on this device or already had
+      // its image rehydrated). Render straight away.
+      if (analysis != null && analysis.imageBytes != null) {
         if (mounted) {
           setState(() {
             _analysis = analysis;
@@ -59,22 +64,84 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
         return;
       }
 
-      // Fallback: cloud-only row → fetch the signed image URL directly.
+      // Path 2: local metadata exists (rehydrated from the cloud history
+      // fetch) but the image bytes are not on disk — pull the JPEG from
+      // the signed URL and present the rich detail card with the
+      // synthesized analysis we already have locally.
       final url = widget.remoteImageUrl;
+      Uint8List? cloudImage;
       if (url != null && url.isNotEmpty) {
-        final res = await http
-            .get(Uri.parse(url))
-            .timeout(const Duration(seconds: 20));
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          if (mounted) {
-            setState(() {
-              _imageBytes = res.bodyBytes;
-              _loading = false;
-            });
+        try {
+          final res = await http
+              .get(Uri.parse(url))
+              .timeout(const Duration(seconds: 20));
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            cloudImage = res.bodyBytes;
           }
-          return;
+        } catch (e) {
+          AppLogger.warning('ScanDetail: image fetch failed: $e',
+              tag: 'ScanDetail');
         }
       }
+
+      if (analysis != null && cloudImage != null) {
+        if (mounted) {
+          setState(() {
+            _analysis = analysis;
+            _imageBytes = cloudImage;
+            _loading = false;
+          });
+        }
+        return;
+      }
+
+      // Path 3: nothing local AND no remote URL was passed (e.g. the
+      // user deep-linked into the route). Fall back to fetching the
+      // scan from the cloud API, then upsert it locally so subsequent
+      // opens take Path 2.
+      try {
+        final token = ref.read(authControllerProvider).token?.value;
+        if (token != null) {
+          final remote = await ref
+              .read(scansApiProvider)
+              .getScan(token: token, scanId: widget.scanId);
+          await repo.upsertCloudSnapshot(remote);
+          final hydrated =
+              await repo.findById(widget.scanId, includeImage: false);
+          Uint8List? image = cloudImage;
+          if (image == null &&
+              remote.imageDownloadUrl != null &&
+              remote.imageDownloadUrl!.isNotEmpty) {
+            try {
+              final res = await http
+                  .get(Uri.parse(remote.imageDownloadUrl!))
+                  .timeout(const Duration(seconds: 20));
+              if (res.statusCode >= 200 && res.statusCode < 300) {
+                image = res.bodyBytes;
+              }
+            } catch (e) {
+              AppLogger.warning(
+                'ScanDetail: fallback image fetch failed: $e',
+                tag: 'ScanDetail',
+              );
+            }
+          }
+          if (hydrated != null && image != null) {
+            if (mounted) {
+              setState(() {
+                _analysis = hydrated;
+                _imageBytes = image;
+                _loading = false;
+              });
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        AppLogger.warning('ScanDetail: cloud fallback failed: $e',
+            tag: 'ScanDetail');
+      }
+
       if (mounted) {
         setState(() {
           _loading = false;

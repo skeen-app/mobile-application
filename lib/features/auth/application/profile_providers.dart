@@ -14,7 +14,10 @@ import 'auth_controller.dart';
 final profileSummaryProvider =
     FutureProvider<PatientProfileSummary>((ref) async {
   final user = ref.watch(authControllerProvider.select((s) => s.user));
-  final repo = ref.read(lesionSummaryRepositoryProvider);
+  // Watch (not read) so the projection re-runs when the repository
+  // rebuilds on a sign-out/login boundary — otherwise the dashboard
+  // tile keeps the empty list it cached while the session was idle.
+  final repo = ref.watch(lesionSummaryRepositoryProvider);
   final lesions = repo == null ? const [] : await repo.findAll();
 
   // Watch the reminders list so the tile recomputes when one is created

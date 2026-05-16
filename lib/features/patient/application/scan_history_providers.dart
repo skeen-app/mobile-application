@@ -23,9 +23,16 @@ final scanHistoryRepositoryProvider = Provider<ScanHistoryRepository>((ref) {
 });
 
 /// Raw, unfiltered list of scans for the authenticated user.
+///
+/// Watches [scanHistoryRepositoryProvider] (rather than reading it once)
+/// so the future re-runs automatically when the auth state flips — a
+/// fresh login after a sign-out rebuilds the repository with the new
+/// user's patientId, and this provider must re-fetch instead of serving
+/// the empty list it cached while the session was idle.
 final scanHistoryProvider =
     FutureProvider<List<ScanHistoryEntry>>((ref) async {
-  return ref.read(scanHistoryRepositoryProvider).findAll();
+  final repo = ref.watch(scanHistoryRepositoryProvider);
+  return repo.findAll();
 });
 
 /// Free-text query bound to the search bar at the top of the screen.

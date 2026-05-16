@@ -25,6 +25,7 @@ class LesionAnalysis {
     this.distanceCm,
     this.imageBytes,
     this.pendingUpload = false,
+    this.localOnly = false,
     this.imageHash,
   });
 
@@ -47,6 +48,12 @@ class LesionAnalysis {
   /// Whether this record is pending upload to the cloud. Defaults to false;
   /// set to true only when the user opts-in for data sharing.
   final bool pendingUpload;
+
+  /// True when the user captured this scan with cloud-sync disabled. The
+  /// row stays on-device forever (or until logout purges it) and the UI
+  /// surfaces it with a "Not synced" badge so the user understands the
+  /// difference from rows queued behind a network outage.
+  final bool localOnly;
 
   /// SHA-256 hex digest of the raw JPEG for dedup + integrity verification.
   final String? imageHash;
@@ -83,6 +90,7 @@ class LesionAnalysis {
     required DateTime capturedAt,
     required Map<String, dynamic> decrypted,
     bool pendingUpload = false,
+    bool localOnly = false,
     Uint8List? imageBytes,
   }) {
     final bbox = decrypted['bbox'] as Map<String, dynamic>;
@@ -110,6 +118,7 @@ class LesionAnalysis {
       distanceCm: (decrypted['distanceCm'] as num?)?.toDouble(),
       imageBytes: imageBytes,
       pendingUpload: pendingUpload,
+      localOnly: localOnly,
       imageHash: decrypted['imageHash'] as String?,
     );
   }

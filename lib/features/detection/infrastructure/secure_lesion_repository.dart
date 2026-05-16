@@ -8,8 +8,12 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 
+import '../domain/ar_geometry.dart';
+import '../domain/class_label.dart';
+import '../domain/inference_result.dart';
 import '../domain/lesion_analysis.dart';
 import '../domain/ports.dart';
+import '../domain/scan_remote.dart';
 
 /// Encrypted local persistence of [LesionAnalysis]. Uses SQLite for indexed
 /// queries and AES-256-CBC for the sensitive payload column + image blob.
@@ -44,7 +48,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
 
     _db = await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: (db, _) async {
         await db.execute('''
           CREATE TABLE $_table (
@@ -59,7 +63,8 @@ class SecureLesionRepository implements LesionRepositoryPort {
             image_iv          TEXT,
             image_hash        TEXT,
             pending_upload    INTEGER NOT NULL DEFAULT 0,
-            pending_deletion  INTEGER NOT NULL DEFAULT 0
+            pending_deletion  INTEGER NOT NULL DEFAULT 0,
+            local_only        INTEGER NOT NULL DEFAULT 0
           )
         ''');
         await db.execute(
@@ -97,6 +102,12 @@ class SecureLesionRepository implements LesionRepositoryPort {
           );
           if (kDebugMode) debugPrint('SQLite migrated to v3 (pending_deletion)');
         }
+        if (oldVersion < 4) {
+          await db.execute(
+            'ALTER TABLE $_table ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0',
+          );
+          if (kDebugMode) debugPrint('SQLite migrated to v4 (local_only)');
+        }
       },
     );
   }
@@ -131,6 +142,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       'payload_iv': iv.base64,
       'payload_cipher': encrypted.base64,
       'pending_upload': analysis.pendingUpload ? 1 : 0,
+      'local_only': analysis.localOnly ? 1 : 0,
     };
 
     // Encrypt image bytes separately (binary blob, not base64 in JSON).
@@ -177,14 +189,92 @@ class SecureLesionRepository implements LesionRepositoryPort {
   }
 
   @override
-  Future<List<LesionAnalysis>> findPendingUpload() async {
+  Future<List<LesionAnalysis>> findPendingUpload(String patientId) async {
     final db = _requireDb();
     final rows = await db.query(
       _table,
-      where: 'pending_upload = 1 AND pending_deletion = 0',
+      // local_only = 1 means the user opted out of cloud sync, so the row
+      // must never enter the upload queue regardless of pending_upload.
+      where: 'patient_id = ? AND pending_upload = 1 '
+          'AND pending_deletion = 0 AND local_only = 0',
+      whereArgs: [patientId],
       orderBy: 'captured_at ASC',
     );
     return rows.map((r) => _rowToAnalysis(r, includeImage: false)).toList();
+  }
+
+  @override
+  Future<void> clearAll() async {
+    if (_db == null) {
+      // Nothing to clear if the DB was never opened in this session —
+      // initialize so the file is created (and effectively empty) on disk
+      // for any subsequent reads.
+      await initialize();
+    }
+    final db = _requireDb();
+    await db.delete(_table);
+  }
+
+  @override
+  Future<void> upsertCloudSnapshot(ScanRemote remote) async {
+    final db = _requireDb();
+    // Cheap existence probe — avoids both the synth work and stomping on
+    // a richer local copy. The detail view will still work because
+    // ``findById`` reads whichever row is already there.
+    final existing = await db.query(
+      _table,
+      columns: const ['id'],
+      where: 'id = ?',
+      whereArgs: [remote.id],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) return;
+
+    // The cloud only stores top-label + confidence, so we fabricate a
+    // 5-element score vector where the top class carries the entire
+    // confidence mass. argmax still resolves to the right ClassLabel, so
+    // the synthesized [InferenceResult] reproduces the same warning
+    // bucket the backend assigned at capture time.
+    ClassLabel topLabel;
+    try {
+      topLabel = ClassLabel.fromSlug(remote.topLabel);
+    } catch (_) {
+      // Cloud sent a label our enum doesn't know about (older record /
+      // model drift) — fall back to nevus so the row at least renders
+      // instead of crashing the detail screen.
+      topLabel = ClassLabel.nevus;
+    }
+    final scores = List<double>.generate(
+      ClassLabel.values.length,
+      (i) => i == topLabel.index ? remote.confidence : 0.0,
+    );
+
+    final analysis = LesionAnalysis(
+      id: remote.id,
+      patientId: remote.userId,
+      result: InferenceResult(scores: scores),
+      anchor: null,
+      // Bounding box drives the live AR overlay, not the detail card,
+      // so placeholder geometry is fine for rehydrated cloud rows.
+      boundingBox: const BoundingBox(
+        left: 0,
+        top: 0,
+        width: 1,
+        height: 1,
+        frameWidth: 1,
+        frameHeight: 1,
+      ),
+      capturedAt: remote.capturedAt,
+      bodyRegion: remote.bodyPartLabel ?? remote.bodyRegion,
+      distanceCm: remote.distanceCm,
+      imageBytes: null,
+      // Already in cloud — nothing to upload, nothing to mark local-only.
+      pendingUpload: false,
+      localOnly: false,
+      imageHash: remote.imageHash,
+    );
+
+    await save(analysis); // no jpegBytes — image stays in the cloud
   }
 
   @override
@@ -285,6 +375,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       ),
       decrypted: jsonDecode(json) as Map<String, dynamic>,
       pendingUpload: (row['pending_upload'] as int?) == 1,
+      localOnly: (row['local_only'] as int?) == 1,
       imageBytes: imageBytes,
     );
   }
