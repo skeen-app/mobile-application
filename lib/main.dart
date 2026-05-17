@@ -148,6 +148,7 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
     final locale = ref.watch(localeControllerProvider);
 
     return MaterialApp.router(
+      key: ValueKey(locale),
       title: 'skeen'.tr,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,

@@ -125,7 +125,7 @@ class _RegionChip extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                label,
+                label.tr,
                 style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w500,
