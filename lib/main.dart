@@ -1,9 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'core/localization/locale_controller.dart';
 import 'core/logger/app_logger.dart';
 
 import 'core/notifications/in_app_banner.dart';
@@ -142,10 +144,22 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(appRouterProvider);
+    final locale = ref.watch(localeControllerProvider);
+
     return MaterialApp.router(
       title: 'skeen',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
+      locale: locale,
+      supportedLocales: const [
+        Locale('en', ''),
+        Locale('es', ''),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       routerConfig: router,
       builder: (context, child) {
         // Mounts the in-app banner overlay above every route, including

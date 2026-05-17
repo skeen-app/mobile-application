@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../core/localization/locale_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 
 /// Top-of-home greeting strip: time-aware salutation + first name of the
@@ -8,7 +10,7 @@ import '../../../../core/theme/app_colors.dart';
 ///
 /// Falls back to a name-less salutation when the auth state has no `user`
 /// (e.g. fresh hydration before profile lookup completes).
-class HomeGreeting extends StatelessWidget {
+class HomeGreeting extends ConsumerWidget {
   const HomeGreeting({
     super.key,
     required this.firstName,
@@ -27,7 +29,9 @@ class HomeGreeting extends StatelessWidget {
   final VoidCallback onNotificationsTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final currentLocale = ref.watch(localeControllerProvider);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -36,7 +40,7 @@ class HomeGreeting extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${_greeting()},',
+                '${_greeting()},'.tr,
                 style: const TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 16,
@@ -62,6 +66,37 @@ class HomeGreeting extends StatelessWidget {
             ],
           ),
         ),
+        // Language Toggle
+        GestureDetector(
+          onTap: () {
+            ref.read(localeControllerProvider.notifier).toggleLanguage();
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.violeta.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.violeta.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.language, size: 16, color: AppColors.violetaClaro),
+                const SizedBox(width: 4),
+                Text(
+                  currentLocale.languageCode.toUpperCase(),
+                  style: const TextStyle(
+                    fontFamily: 'Poppins',
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                    color: AppColors.violetaClaro,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Notifications Bell
         _NotificationBell(
           unreadCount: unreadCount,
           onTap: onNotificationsTap,
