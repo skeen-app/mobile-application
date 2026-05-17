@@ -369,6 +369,51 @@ class AuthApi {
     throw _mapError(res, path: '/auth/profile-photo');
   }
 
+  /// Sends `DELETE /auth/profile-photo` to clear the authenticated
+  /// user's avatar. Returns `true` when the server actually removed a
+  /// photo, `false` when there was nothing to clear (the endpoint is
+  /// idempotent — the client can call this safely without first
+  /// checking `avatarUrl`).
+  ///
+  /// Throws [NetworkFailure] on connectivity issues and re-throws the
+  /// mapped [AuthFailure] for non-2xx responses.
+  Future<bool> deleteProfilePhoto({required AuthToken token}) async {
+    AppLogger.info('Attempting profile photo delete', tag: 'AuthApi');
+    final uri = ApiConfig.uri('/auth/profile-photo');
+    final http.Response res;
+    try {
+      res = await http
+          .delete(
+            uri,
+            headers: {
+              'Authorization': 'Bearer ${token.value}',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(ApiConfig.defaultTimeout);
+    } on TimeoutException {
+      AppLogger.warning('Profile photo delete timed out', tag: 'AuthApi');
+      throw const NetworkFailure('The request timed out');
+    } catch (e, stack) {
+      AppLogger.error('Network exception during profile photo delete',
+          tag: 'AuthApi', error: e, stackTrace: stack);
+      throw const NetworkFailure();
+    }
+
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      final json = _decodeJson(res);
+      final deleted = json['deleted'] as bool? ?? false;
+      AppLogger.info(
+        'Profile photo delete OK — deleted=$deleted',
+        tag: 'AuthApi',
+      );
+      return deleted;
+    }
+    AppLogger.error('Profile photo delete failed: HTTP ${res.statusCode}',
+        tag: 'AuthApi');
+    throw _mapError(res, path: '/auth/profile-photo');
+  }
+
   AuthApiResponse _parseSession(http.Response res) {
     final json = _decodeJson(res);
     final tokenJson = json['token'];

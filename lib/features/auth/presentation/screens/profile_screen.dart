@@ -152,8 +152,43 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       case AvatarAction.uploadPhoto:
         await _pickAndUpload(context, ref, ImageSource.gallery);
       case AvatarAction.deletePhoto:
-        // Backend DELETE endpoint not yet available.
-        _showSnackBar(context, 'Photo removal coming soon'.tr);
+        await _confirmAndDeletePhoto(context, ref);
+    }
+  }
+
+  Future<void> _confirmAndDeletePhoto(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => const _DeletePhotoConfirmDialog(),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    _showSnackBar(context, 'Removing photo…'.tr);
+    try {
+      await ref.read(authControllerProvider.notifier).deleteProfilePhoto();
+
+      // Drop any cached bytes for the previous URL so a re-upload (or
+      // the next sign-in) doesn't render a stale image — same precaution
+      // we take after a successful upload.
+      final previous = ref.read(authControllerProvider).user?.avatarUrl;
+      if (previous != null && previous.isNotEmpty) {
+        try {
+          await NetworkImage(previous).evict();
+        } catch (_) {}
+      }
+      if (!mounted) return;
+      setState(() => _avatarRefreshToken++);
+
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showSnackBar(context, 'Profile photo removed'.tr);
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      _showSnackBar(context, 'Could not remove photo — please try again'.tr);
     }
   }
 
@@ -506,6 +541,64 @@ class _LogoutButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Confirmation dialog shown before clearing the avatar. Matches the
+/// destructive-action visual treatment used by the scan-delete dialog
+/// (fucsia accent + brand-themed background) so the user reads the
+/// gravity of the action at a glance.
+class _DeletePhotoConfirmDialog extends StatelessWidget {
+  const _DeletePhotoConfirmDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.background,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: AppColors.violetaOscuro),
+      ),
+      title: Row(
+        children: [
+          const Icon(Icons.delete_outline, color: AppColors.fucsia, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Remove profile photo?'.tr,
+              style: const TextStyle(
+                fontFamily: 'Poppins',
+                fontWeight: FontWeight.w600,
+                color: AppColors.violetaClaro,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        'Your profile picture will be cleared on this device and in your '
+                'private cloud. You can upload a new one any time.'
+            .tr,
+        style: const TextStyle(
+          fontFamily: 'Poppins',
+          color: AppColors.hintText,
+          fontSize: 13,
+          height: 1.5,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(false),
+          child: Text('Cancel'.tr),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(backgroundColor: AppColors.fucsia),
+          child: Text('Delete'.tr),
+        ),
+      ],
     );
   }
 }

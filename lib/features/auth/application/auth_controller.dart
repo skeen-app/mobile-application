@@ -395,4 +395,37 @@ class AuthController extends StateNotifier<AuthState> {
 
     return url;
   }
+
+  /// Clears the user's profile photo on the server AND in local state.
+  ///
+  /// Returns ``true`` when the server reported that something was
+  /// actually deleted, ``false`` when there was nothing to remove
+  /// (idempotent). Either way the local ``avatarUrl`` is forced to
+  /// ``null`` so the UI reverts to the fallback avatar immediately —
+  /// the only path that surfaces an error is a network or auth failure
+  /// reaching the API.
+  ///
+  /// Throws [AuthFailure] / [NetworkFailure] on error.
+  Future<bool> deleteProfilePhoto() async {
+    final token = state.token;
+    if (token == null) {
+      throw const InvalidCredentialsFailure();
+    }
+
+    final deleted = await _api.deleteProfilePhoto(token: token);
+
+    // Always wipe the local URL on a successful HTTP response. Even when
+    // the server says deleted=false (no photo to remove) the safest
+    // local truth is "no avatar" — keeps state aligned with intent.
+    final updatedUser = state.user?.copyWith(clearAvatar: true);
+    if (updatedUser != null) {
+      await _storage.saveUser(updatedUser);
+      state = state.copyWith(user: updatedUser);
+      AppLogger.info(
+        'Profile photo cleared in state (server deleted=$deleted)',
+        tag: 'AuthController',
+      );
+    }
+    return deleted;
+  }
 }

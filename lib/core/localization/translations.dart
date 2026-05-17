@@ -352,6 +352,15 @@ const Map<String, String> enTranslations = {
   'Analysis ID': 'Analysis ID',
   'AI verdict': 'AI verdict',
   'Captured lesion': 'Captured lesion',
+
+  // ── Profile photo deletion ───────────────────────────────────────────
+  'Remove profile photo?': 'Remove profile photo?',
+  'Your profile picture will be cleared on this device and in your private cloud. You can upload a new one any time.':
+      'Your profile picture will be cleared on this device and in your private cloud. You can upload a new one any time.',
+  'Removing photo…': 'Removing photo…',
+  'Profile photo removed': 'Profile photo removed',
+  'Could not remove photo — please try again':
+      'Could not remove photo — please try again',
 };
 
 const Map<String, String> esTranslations = {
@@ -707,4 +716,13 @@ const Map<String, String> esTranslations = {
   'Analysis ID': 'ID de análisis',
   'AI verdict': 'Veredicto IA',
   'Captured lesion': 'Lesión capturada',
+
+  // ── Profile photo deletion ───────────────────────────────────────────
+  'Remove profile photo?': '¿Eliminar foto de perfil?',
+  'Your profile picture will be cleared on this device and in your private cloud. You can upload a new one any time.':
+      'Tu foto de perfil será eliminada de este dispositivo y de tu nube privada. Puedes subir una nueva en cualquier momento.',
+  'Removing photo…': 'Eliminando foto…',
+  'Profile photo removed': 'Foto de perfil eliminada',
+  'Could not remove photo — please try again':
+      'No se pudo eliminar la foto — inténtalo de nuevo',
 };
