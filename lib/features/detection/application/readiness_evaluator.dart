@@ -9,8 +9,11 @@ import '../domain/ports.dart';
 /// [CaptureReadiness] stream. Lives in `application/` because it composes
 /// infrastructure (camera service) with domain value objects.
 ///
-/// Stability is derived from successive sharpness readings — if the last
-/// N readings stay within a tolerance band, the phone is considered stable.
+/// The redesigned capture UX surfaces three indicators — lighting, focus
+/// and distance — so the evaluator no longer tracks a separate
+/// "stability" signal. Autofocus settling is already implicit in the
+/// focus boolean (sharpness above its threshold) and the extra fourth
+/// chip was making the camera screen feel busy without adding signal.
 class ReadinessEvaluator {
   ReadinessEvaluator({
     required ScanCameraServicePort camera,
@@ -28,23 +31,15 @@ class ReadinessEvaluator {
   CaptureQuality _lighting = CaptureQuality.initial;
   FocusQuality _focus = FocusQuality.initial;
   CaptureDistance _distance = const CaptureDistance.unknown();
-  bool _isStable = false;
-
-  // Stability tracking: last N sharpness readings. Tightened so the gate
-  // unlocks fast — a 3-sample window at ~3 Hz lands ≈600 ms instead of
-  // ~1.5 s, which felt like the app had hung.
-  static const int _stabilityWindowSize = 3;
-  static const double _stabilityTolerance = 0.18;
-  final List<double> _recentSharpness = [];
-  DateTime _lastStableCheck = DateTime.fromMillisecondsSinceEpoch(0);
 
   Stream<CaptureReadiness> get readiness => _readinessController.stream;
+
+  CaptureDistance get currentDistance => _distance;
 
   CaptureReadiness get current => CaptureReadiness(
         lighting: _lighting,
         focus: _focus.isSharp,
         distance: _distance.isInAcceptableRange,
-        isStable: _isStable,
       );
 
   void start({Stream<CaptureDistance>? distanceStream}) {
@@ -55,7 +50,6 @@ class ReadinessEvaluator {
 
     _sharpnessSub = _camera.sharpness.listen((s) {
       _focus = FocusQuality(sharpness: s);
-      _updateStability(s);
       _emit();
     });
 
@@ -69,30 +63,6 @@ class ReadinessEvaluator {
       // (user must self-coach based on visual overlay).
       _distance = const CaptureDistance.cm(CaptureDistance.sweetSpotCm);
     }
-  }
-
-  void _updateStability(double sharpness) {
-    _recentSharpness.add(sharpness);
-    if (_recentSharpness.length > _stabilityWindowSize) {
-      _recentSharpness.removeAt(0);
-    }
-
-    final now = DateTime.now();
-    if (now.difference(_lastStableCheck).inMilliseconds < 150) return;
-    _lastStableCheck = now;
-
-    // First two samples are enough to "feel" stable — once the user has
-    // held the phone for ~half a second the focus search has typically
-    // settled. Tight tolerance is reserved for the final sharpness pass.
-    if (_recentSharpness.length < _stabilityWindowSize) {
-      _isStable = _recentSharpness.length >= 2 && sharpness > 0.05;
-      return;
-    }
-
-    final mean =
-        _recentSharpness.reduce((a, b) => a + b) / _recentSharpness.length;
-    _isStable = _recentSharpness
-        .every((v) => (v - mean).abs() < _stabilityTolerance);
   }
 
   void _emit() {

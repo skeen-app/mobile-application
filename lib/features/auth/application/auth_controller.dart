@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/auth_failure.dart';
+import '../domain/auth_token.dart';
 import '../domain/login_request.dart';
 import '../domain/registered_user.dart';
 import '../domain/registration_request.dart';
@@ -78,9 +79,97 @@ class AuthController extends StateNotifier<AuthState> {
         token: token,
         user: user,
       );
+      // Refresh the Firebase ID token in the background so the very
+      // next API call uses a fresh credential instead of a stale one
+      // that may have expired while the app was closed. Firebase ID
+      // tokens are 1h-lived; without this any cold start more than an
+      // hour after the previous use surfaces as a 401 on /scans (and
+      // every other authenticated route) until the user re-logs in.
+      Future.microtask(refreshSession);
     } else {
       AppLogger.info('No stored session found', tag: 'AuthController');
     }
+  }
+
+  /// Best-effort refresh of the Firebase ID token using the local
+  /// FirebaseAuth SDK session. Returns `true` when the stored token
+  /// has been replaced with a freshly-minted one.
+  ///
+  /// No-op when `FirebaseAuth.instance.currentUser` is null — that
+  /// happens on the email+password flow when the optional local
+  /// FirebaseAuth mirror failed (network issue, Firebase not init on
+  /// iOS, etc.). In that case the user must re-login; we can't refresh
+  /// on the server's behalf because the backend doesn't hold the
+  /// Identity Toolkit refresh token.
+  ///
+  /// Safe to spam — the SDK throttles internally and the call is
+  /// network-cheap.
+  Future<bool> refreshSession() async {
+    final currentUser = fb_auth.FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      AppLogger.info(
+        'refreshSession: no local FirebaseAuth user — leaving token as-is',
+        tag: 'AuthController',
+      );
+      return false;
+    }
+    try {
+      final fresh = await currentUser.getIdToken(true);
+      if (fresh == null || fresh.isEmpty) {
+        AppLogger.warning(
+          'refreshSession: getIdToken returned empty',
+          tag: 'AuthController',
+        );
+        return false;
+      }
+      final refreshed = AuthToken(value: fresh, issuedAt: DateTime.now());
+      await _storage.saveToken(refreshed);
+      if (state.status == AuthStatus.authenticated) {
+        state = state.copyWith(token: refreshed);
+      }
+      AppLogger.info(
+        'Firebase ID token refreshed (expires in ~1h)',
+        tag: 'AuthController',
+      );
+      return true;
+    } catch (e) {
+      AppLogger.warning(
+        'refreshSession failed: $e',
+        tag: 'AuthController',
+      );
+      return false;
+    }
+  }
+
+  /// Mirrors a successful email+password login into the local
+  /// FirebaseAuth SDK so the SDK's auto-refresh machinery can later
+  /// mint fresh ID tokens via [refreshSession].
+  ///
+  /// Fire-and-forget by design: the backend already returned a valid
+  /// idToken so the user is fully authenticated; this only unlocks the
+  /// refresh path for the next session. If the second sign-in fails
+  /// (network blip, Firebase not initialised on iOS, account locked,
+  /// etc.) the user simply doesn't get auto-refresh and will need to
+  /// re-login after the hour-long token lifetime.
+  void _mirrorEmailLoginToFirebaseAuth(String email, String password) {
+    Future<void>.microtask(() async {
+      try {
+        await fb_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+        AppLogger.info(
+          'Local FirebaseAuth session established (auto-refresh on)',
+          tag: 'AuthController',
+        );
+      } catch (e) {
+        AppLogger.warning(
+          'Could not establish local FirebaseAuth session — '
+          'auto-refresh disabled until next login: $e',
+          tag: 'AuthController',
+        );
+      }
+    });
   }
 
   Future<bool> register(RegistrationRequest request) async {
@@ -107,6 +196,8 @@ class AuthController extends StateNotifier<AuthState> {
         token: response.token,
         user: user,
       );
+      // Unlock the auto-refresh path for this account (see method doc).
+      _mirrorEmailLoginToFirebaseAuth(request.email, request.password);
       return true;
     } on AuthFailure catch (failure) {
       AppLogger.warning('Registration failed (AuthFailure): $failure', tag: 'AuthController');
@@ -136,6 +227,8 @@ class AuthController extends StateNotifier<AuthState> {
         token: response.token,
         user: response.user ?? _storage.readUser(),
       );
+      // Unlock the auto-refresh path for this account (see method doc).
+      _mirrorEmailLoginToFirebaseAuth(request.email, request.password);
       return true;
     } on AuthFailure catch (failure) {
       AppLogger.warning('Login failed (AuthFailure): $failure', tag: 'AuthController');

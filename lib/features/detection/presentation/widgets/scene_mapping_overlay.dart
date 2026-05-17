@@ -36,7 +36,6 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
     'lighting',
     'distance',
     'focus',
-    'stability',
     'ready',
   ];
 
@@ -95,11 +94,13 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
   }
 
   /// Returns the highest-priority failing hint key, or null if all pass.
+  /// The legacy "stability" branch was removed alongside the
+  /// CaptureReadiness.isStable field — focus already implies a settled
+  /// autofocus search.
   String? _failingHint(CaptureReadiness r) {
     if (!r.lighting.canCapture) return 'lighting';
     if (!r.distance) return 'distance';
     if (!r.focus) return 'focus';
-    if (!r.isStable) return 'stability';
     return null;
   }
 
@@ -125,12 +126,6 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
         return const _Hint(
           icon: Icons.filter_center_focus_outlined,
           message: 'Hold steady — focusing',
-          accent: AppColors.violetaClaro,
-        );
-      case 'stability':
-        return const _Hint(
-          icon: Icons.front_hand_outlined,
-          message: 'Hold the phone steady',
           accent: AppColors.violetaClaro,
         );
       case 'ready':

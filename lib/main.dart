@@ -151,6 +151,14 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // Refresh the Firebase ID token FIRST — every other resume task
+      // (sync, reminder reconciliation, future API calls) authenticates
+      // against /api/v1/* with that token. Firebase IDs expire after 1h,
+      // so without this an app that's been backgrounded for a couple of
+      // hours starts the foreground burst with a 401 on the very first
+      // /scans call (the orchestrator then silently aborts the upload
+      // batch). Best-effort: a refresh failure only logs, doesn't crash.
+      ref.read(authControllerProvider.notifier).refreshSession();
       ref.read(syncOrchestratorProvider).syncNow(reason: 'foreground');
       // Reconcile past-due reminders the moment we come back to
       // foreground. Without this, a reminder that fired while the app

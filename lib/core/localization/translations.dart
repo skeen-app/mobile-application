@@ -362,6 +362,13 @@ const Map<String, String> enTranslations = {
   'Could not remove photo — please try again':
       'Could not remove photo — please try again',
 
+  // ── Capture guide overlay (scan screens) ───────────────────────────
+  // 'Distance' already mapped earlier (PDF report metadata).
+  'Light': 'Light',
+  'Focus': 'Focus',
+  'Move closer': 'Move closer',
+  'Move away': 'Move away',
+
   // ── Complete body map screen ────────────────────────────────────────
   // 'Needs attention', 'Stable' and 'Total' reuse keys defined earlier in
   // this map (home dashboard, scan history, etc.) — do not re-add them.
@@ -746,6 +753,13 @@ const Map<String, String> esTranslations = {
   'Profile photo removed': 'Foto de perfil eliminada',
   'Could not remove photo — please try again':
       'No se pudo eliminar la foto — inténtalo de nuevo',
+
+  // ── Capture guide overlay (scan screens) ───────────────────────────
+  'Light': 'Luz',
+  'Focus': 'Enfoque',
+  // 'Distance' ya está mapeada arriba como 'Distancia'.
+  'Move closer': 'Acércate',
+  'Move away': 'Aléjate',
 
   // ── Complete body map screen ────────────────────────────────────────
   // 'Needs attention', 'Stable' and 'Total' reuse keys defined earlier in

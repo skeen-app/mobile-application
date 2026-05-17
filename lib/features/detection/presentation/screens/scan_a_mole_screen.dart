@@ -19,11 +19,10 @@ import '../../application/readiness_evaluator.dart';
 import '../../application/sync_orchestrator.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/scan_camera_service.dart';
-import '../widgets/ar_reticle_overlay.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
+import '../widgets/capture_guide_overlay.dart';
 import '../widgets/floating_diagnosis_label.dart';
-import '../widgets/readiness_checklist_overlay.dart';
 import '../widgets/scan_capture_button.dart';
 
 /// Fallback scan screen for devices without AR/depth sensor support.
@@ -280,7 +279,16 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                       ),
                     ),
                   ),
-                ArReticleOverlay(quality: _quality),
+                // Capture guide: subtle target frame + 3 chips (light /
+                // focus / distance). No-AR fallback has no depth sensor
+                // so distance defaults to the sweet-spot constant — the
+                // chip stays in the "ok" state, matching the readiness
+                // gate above.
+                if (detection.phase == DetectionPhase.ready)
+                  CaptureGuideOverlay(
+                    readiness: _readiness,
+                    distance: detection.distance,
+                  ),
 
                 // Subtle disclaimer: AR is not available on this device.
                 Positioned(
@@ -335,10 +343,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                     ),
                   ),
 
-                // Readiness checklist
-                if (detection.phase == DetectionPhase.ready ||
-                    detection.phase == DetectionPhase.initializing)
-                  ReadinessChecklistOverlay(readiness: _readiness),
+                // (Old checklist removed — folded into CaptureGuideOverlay)
 
                 // Flash toggle
                 Positioned(

@@ -22,12 +22,10 @@ import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/capture_quality.dart';
 import '../../infrastructure/ar_session_service.dart';
-import '../widgets/ar_distance_ring.dart';
-import '../widgets/ar_reticle_overlay.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
+import '../widgets/capture_guide_overlay.dart';
 import '../widgets/floating_diagnosis_label.dart';
-import '../widgets/readiness_checklist_overlay.dart';
 import '../widgets/scan_capture_button.dart';
 import '../widgets/scene_mapping_overlay.dart';
 
@@ -78,6 +76,13 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
   // AR popup screen-space position from anchor projection.
   Offset? _anchorScreen;
   bool _anchorVisible = false;
+  // Last instant we got a valid projection from the native AR side.
+  // When the projection drops out for a frame or two (camera tracking
+  // briefly paused, lastFrame still updating after captureFrame, etc.)
+  // we keep the popup at its last known position for a short grace
+  // window so it doesn't flicker off-screen on every micro-blip.
+  DateTime? _lastGoodAnchorAt;
+  static const _anchorGraceMs = 1500;
 
   // Pinch-to-zoom state
   double _currentZoom = 1.0;
@@ -177,14 +182,20 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
         ? CaptureQuality.fromBrightness(_seenBrightness)
         : CaptureQuality.initial;
     final tracking = _tracking == 'TRACKING';
-    // Distance is feedback-only — ARCore depth is unreliable below 10 cm
-    // (the optimal lesion distance) so we don't gate on it. The on-screen
-    // distance ring still shows the real reading for the user.
+    // AR depth below ~10 cm is noisy and the user is rarely standing
+    // still inside that band on first contact — but we DO want the
+    // distance chip to react to the live reading so the new overlay
+    // can coach with directional arrows. Source the bool gate from
+    // the depth stream when available, fall back to "in range" when
+    // the session hasn't reported a frame yet.
+    final lastDistance = ref.read(detectionControllerProvider).distance;
+    final distanceOk = lastDistance.isKnown
+        ? lastDistance.isInAcceptableRange
+        : true;
     return CaptureReadiness(
       lighting: lighting,
       focus: tracking,
-      distance: true,
-      isStable: tracking,
+      distance: distanceOk,
     );
   }
 
@@ -234,45 +245,67 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
           _anchorVisible = false;
         });
       }
+      _lastGoodAnchorAt = null;
       return;
     }
 
-    // Try the AR anchor first — gives 3D follow as the user moves the phone.
+    // Live AR projection from the native side (frame-by-frame).
+    Offset? rawPx;
     if (state.anchor != null) {
-      final px = await ref
+      rawPx = await ref
           .read(detectionControllerProvider.notifier)
           .projectAnchorToScreen(previewSize: _previewSize);
       if (!mounted) return;
-      if (px != null) {
-        if (_anchorScreen != px || !_anchorVisible) {
-          setState(() {
-            _anchorScreen = px;
-            _anchorVisible = true;
-          });
-        }
-        return;
-      }
-      // Anchor exists but is outside the camera frustum — hide popup.
-      if (_anchorVisible) {
-        setState(() {
-          _anchorScreen = null;
-          _anchorVisible = false;
-        });
-      }
-      return;
     }
 
-    // No AR anchor → fall back to screen-space lesion centroid so the
-    // popup is always visible after capture, even on devices where the
-    // raycast returns nothing.
-    final centroid = state.result?.lesionCentroid ?? const Offset(0.5, 0.5);
-    final pos = Offset(
-      centroid.dx * _previewSize.width,
-      centroid.dy * _previewSize.height,
+    if (rawPx == null) {
+      // No live projection right now. Two scenarios:
+      //   1. The anchor exists but the native side hasn't refreshed
+      //      `lastFrame` yet (the immediate post-capture frame, a brief
+      //      tracking pause, etc.) — keep the last known position for
+      //      a 1.5s grace window so the popup doesn't flicker.
+      //   2. The capture never produced an anchor (raycast returned
+      //      null) — use the inference centroid so the popup is at
+      //      least pinned to the lesion's screen position.
+      final lastGood = _lastGoodAnchorAt;
+      final stillInGrace = lastGood != null &&
+          DateTime.now().difference(lastGood).inMilliseconds <
+              _anchorGraceMs;
+      if (state.anchor != null && stillInGrace && _anchorScreen != null) {
+        // Hold the last known projected position; tracking will resume
+        // in a few ms and we don't want the popup blinking.
+        return;
+      }
+      // Fallback: centroid-pinned position. Static against camera
+      // motion (we don't have a world anchor) but at least visible.
+      final centroid = state.result?.lesionCentroid ?? const Offset(0.5, 0.5);
+      rawPx = Offset(
+        centroid.dx * _previewSize.width,
+        centroid.dy * _previewSize.height,
+      );
+    } else {
+      _lastGoodAnchorAt = DateTime.now();
+    }
+
+    // Compensate for the Flutter-side Transform.scale that powers the
+    // digital pinch zoom on the camera view. The native AR side
+    // projects to NDC against the unzoomed frame; the camera RENDERS
+    // through `Transform.scale(scale=_currentZoom, alignment=center)`,
+    // so a point at `rawPx` on the original frame appears at
+    //   (rawPx - center) * zoom + center
+    // in screen space. Without this the label tracks correctly along
+    // the unscaled frame but visually slides away from the zoomed
+    // lesion — looks "broken" / "static-vs-lesion" to the user.
+    final centerX = _previewSize.width / 2;
+    final centerY = _previewSize.height / 2;
+    final displayPx = Offset(
+      (rawPx.dx - centerX) * _currentZoom + centerX,
+      (rawPx.dy - centerY) * _currentZoom + centerY,
     );
-    if (_anchorScreen != pos || !_anchorVisible) {
+
+    if (_anchorScreen != displayPx || !_anchorVisible) {
       setState(() {
-        _anchorScreen = pos;
+        _anchorScreen = displayPx;
         _anchorVisible = true;
       });
     }
@@ -439,10 +472,11 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     ),
                   ),
 
-                if (detection.phase == DetectionPhase.ready) ...[
-                  ArReticleOverlay(quality: detection.readiness.lighting),
-                  ArDistanceRing(distance: detection.distance),
-                ],
+                if (detection.phase == DetectionPhase.ready)
+                  CaptureGuideOverlay(
+                    readiness: detection.readiness,
+                    distance: detection.distance,
+                  ),
 
                 if (detection.phase == DetectionPhase.mapping ||
                     detection.phase == DetectionPhase.initializing)
@@ -450,9 +484,6 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     readiness: detection.readiness,
                     elapsedMs: _mappingElapsedMs,
                   ),
-
-                if (detection.phase == DetectionPhase.ready)
-                  ReadinessChecklistOverlay(readiness: detection.readiness),
 
                 if (detection.phase == DetectionPhase.presented &&
                     detection.result != null &&

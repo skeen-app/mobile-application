@@ -98,17 +98,23 @@ class ReadinessItem {
   final String hint;
 }
 
-/// Composite value object that combines all four quality signals into a
-/// single capture-readiness gate. The AR scan screen uses [checklist] to
-/// render the live guidance overlay, and [isReady] to enable/disable the
-/// shutter button.
+/// Composite value object combining the three capture-quality signals
+/// the redesigned capture UX exposes to the user:
+///   • [lighting] — ambient brightness bucketed by [CaptureQuality]
+///   • [focus]    — Laplacian-variance sharpness, true when in range
+///   • [distance] — depth-sensor / focal-distance, true when in 10–20cm
+///
+/// The previous "stability" flag was dropped on purpose: the autofocus
+/// settle was already implicit in the focus signal, and exposing a
+/// fourth indicator made the capture screen feel busy. The three above
+/// are the actual differentiators for a standardised, model-friendly
+/// dermatology shot.
 @immutable
 class CaptureReadiness {
   const CaptureReadiness({
     required this.lighting,
     required this.focus,
     required this.distance,
-    required this.isStable,
   });
 
   final CaptureQuality lighting;
@@ -119,11 +125,7 @@ class CaptureReadiness {
   /// Distance from the AR depth sensor / camera estimate.
   final bool distance; // true = in acceptable range
 
-  /// Gyroscope-derived stability flag (debounced 500ms).
-  final bool isStable;
-
-  bool get isReady =>
-      lighting.canCapture && focus && distance && isStable;
+  bool get isReady => lighting.canCapture && focus && distance;
 
   List<ReadinessItem> get checklist => [
         ReadinessItem(
@@ -145,22 +147,14 @@ class CaptureReadiness {
               ? 'Distance is optimal (~15 cm)'
               : 'Hold the camera 10–20 cm from the lesion',
         ),
-        ReadinessItem(
-          label: 'Stability',
-          passed: isStable,
-          hint: isStable
-              ? 'Steady — ready to capture'
-              : 'Hold still for a moment',
-        ),
       ];
 
-  /// All checks pass count (0–4).
+  /// All checks pass count (0–3).
   int get passedCount => checklist.where((i) => i.passed).length;
 
   static const CaptureReadiness initializing = CaptureReadiness(
     lighting: CaptureQuality.initial,
     focus: false,
     distance: false,
-    isStable: false,
   );
 }
