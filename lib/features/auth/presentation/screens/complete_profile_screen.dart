@@ -66,7 +66,7 @@ class _CompleteProfileScreenState
             phone: _phoneCtrl.text.trim(),
           );
       if (!mounted) return;
-      context.go('/home');
+      context.go('/home', extra: {'showTutorial': true});
     } on AuthFailure catch (failure) {
       if (!mounted) return;
       setState(() => _serverError = failure.message);

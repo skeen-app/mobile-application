@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
+import '../../../../core/widgets/tutorial_overlay.dart';
+import '../../../../core/widgets/tutorial_storage.dart';
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../detection/application/sync_orchestrator.dart';
@@ -27,11 +29,55 @@ import '../widgets/temperature_card.dart';
 /// `LayoutBuilder` + `IntrinsicHeight` + `Spacer` distribute extra vertical
 /// space so the dashboard fills the viewport on tall devices, and
 /// `SingleChildScrollView` engages on shorter ones.
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  bool _tutorialChecked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_tutorialChecked) {
+      _tutorialChecked = true;
+      _maybeLaunchTutorial();
+    }
+  }
+
+  Future<void> _maybeLaunchTutorial() async {
+    // Only trigger if the registration funnel passed the flag.
+    final extra = GoRouterState.of(context).extra;
+    final shouldShow =
+        extra is Map<String, dynamic> && extra['showTutorial'] == true;
+    if (!shouldShow) return;
+    // Don't show again if already completed.
+    final alreadyDone = await TutorialStorage.isCompleted();
+    if (alreadyDone || !mounted) return;
+    // Wait one frame so the bottom nav is laid out and we can measure
+    // the scan button's position.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // The scan button is the 3rd of 5 equally-spaced items in the
+      // bottom nav, centred horizontally with vertical centre at
+      // screenHeight - safeBottom - navHeight/2.
+      final screenSize = MediaQuery.of(context).size;
+      final bottomPadding = MediaQuery.of(context).padding.bottom;
+      final navCenter = screenSize.height - bottomPadding - skeenBottomNavHeight / 2;
+      final scanCenter = Offset(screenSize.width / 2, navCenter);
+      TutorialOverlay.show(
+        context,
+        scanButtonCenter: scanCenter,
+        scanButtonRadius: 28,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final environment = ref.watch(environmentProvider);
     final summariesAsync = ref.watch(lesionSummariesProvider);
     final countsAsync = ref.watch(lesionGroupCountsProvider);

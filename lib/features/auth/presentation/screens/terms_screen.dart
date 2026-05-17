@@ -139,7 +139,8 @@ class TermsScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   SkeenButton.primary(
                     label: 'Accept and continue',
-                    onPressed: () => context.go('/home'),
+                    onPressed: () =>
+                        context.go('/home', extra: {'showTutorial': true}),
                   ),
                   const SizedBox(height: 24),
                 ],
