@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -104,28 +105,64 @@ class LocalNotificationService {
 
     final scheduled = tz.TZDateTime.from(reminder.scheduledAt, tz.local);
     final body = _bodyFor(reminder);
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: _channelDescription,
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
+    );
 
-    try {
-      await _plugin.zonedSchedule(
+    // Try exact (best-aligned to the user's chosen time). If the user
+    // never granted SCHEDULE_EXACT_ALARM — the OS throws
+    // `exact_alarms_not_permitted` on Android 12+ — we fall back to the
+    // inexact-while-idle mode so the notification still fires, just
+    // within the OS's batching window (~15 min in Doze). Before today
+    // that exception used to be caught by the outer try/catch and the
+    // alarm vanished silently; the reminder looked saved but the OS
+    // never had it.
+    Future<void> attempt(AndroidScheduleMode mode) {
+      return _plugin.zonedSchedule(
         reminder.notificationId,
         reminder.title,
         body,
         scheduled,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _channelId,
-            _channelName,
-            channelDescription: _channelDescription,
-            importance: Importance.high,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        details,
+        androidScheduleMode: mode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: reminder.id,
       );
+    }
+
+    try {
+      await attempt(AndroidScheduleMode.exactAllowWhileIdle);
+    } on PlatformException catch (e) {
+      if (e.code == 'exact_alarms_not_permitted') {
+        AppLogger.warning(
+          'Exact alarms denied for reminder ${reminder.id} — falling back '
+          'to inexactAllowWhileIdle. The notification will still fire, '
+          'just within the OS doze batching window.',
+          tag: 'LocalNotif',
+        );
+        try {
+          await attempt(AndroidScheduleMode.inexactAllowWhileIdle);
+        } catch (e2, st2) {
+          AppLogger.warning(
+            'Inexact fallback also failed for ${reminder.id}: $e2',
+            tag: 'LocalNotif',
+          );
+          if (kDebugMode) debugPrint('$st2');
+        }
+      } else {
+        AppLogger.warning(
+          'Failed to schedule reminder ${reminder.id}: $e',
+          tag: 'LocalNotif',
+        );
+      }
     } catch (e, st) {
       AppLogger.warning(
         'Failed to schedule reminder ${reminder.id}: $e',

@@ -26,12 +26,29 @@ class RemindersController extends StateNotifier<List<Reminder>> {
     // Reconcile asynchronously so app startup isn't blocked. Any past-due
     // reminders surface in the activity log within the first second.
     Future.microtask(reconcile);
+    // Tick once per minute so a reminder that fires while the user has
+    // the app in foreground surfaces an in-app banner alongside the OS
+    // notification (reconcile records fired reminders → the
+    // NotificationsController emits on its banner stream → the host
+    // overlay slides the card down).
+    //
+    // 1-min granularity is intentional — reminders are not second-
+    // critical and shorter intervals would burn battery without UX gain.
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) => reconcile());
   }
 
   final RemindersStorage storage;
   final LocalNotificationService scheduler;
   final NotificationsController notifications;
   final Uuid _uuid = const Uuid();
+  Timer? _tick;
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    _tick = null;
+    super.dispose();
+  }
 
   // ── Read helpers ────────────────────────────────────────────────────
 
@@ -66,6 +83,17 @@ class RemindersController extends StateNotifier<List<Reminder>> {
     );
     state = [...state, reminder];
     await storage.writeAll(state);
+    // Make sure POST_NOTIFICATIONS and (on Android 12+) SCHEDULE_EXACT_ALARM
+    // are granted BEFORE we hand the alarm to the OS. Without this the
+    // schedule call throws `exact_alarms_not_permitted` and the scheduler
+    // catches it silently — which is exactly the symptom the user hit:
+    // the reminder list shows the entry but no notification ever fires.
+    //
+    // `requestPermissions` is idempotent: it's a no-op the second time.
+    // We don't gate `schedule` on the boolean because the scheduler now
+    // falls back to inexact mode when exact is denied — better an
+    // imprecise notification than none at all.
+    await scheduler.requestPermissions();
     await scheduler.schedule(reminder);
     notifications.recordReminderCheckup(at: scheduledAt);
     AppLogger.info('Reminder created: ${reminder.id}', tag: 'Reminders');

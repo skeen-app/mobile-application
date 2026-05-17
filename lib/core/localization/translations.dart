@@ -361,6 +361,27 @@ const Map<String, String> enTranslations = {
   'Profile photo removed': 'Profile photo removed',
   'Could not remove photo — please try again':
       'Could not remove photo — please try again',
+
+  // ── Complete body map screen ────────────────────────────────────────
+  // 'Needs attention', 'Stable' and 'Total' reuse keys defined earlier in
+  // this map (home dashboard, scan history, etc.) — do not re-add them.
+  'REGION': 'REGION',
+  'STATUS': 'STATUS',
+  'All': 'All',
+  'RECENT SCANS': 'RECENT SCANS',
+  'See all': 'See all',
+  'Could not load recent scans': 'Could not load recent scans',
+  'No scans for this region yet': 'No scans for this region yet',
+  'No scans yet — capture your first mole':
+      'No scans yet — capture your first mole',
+  'No moles match these filters': 'No moles match these filters',
+  'No moles registered yet': 'No moles registered yet',
+  'Try clearing the region or status filters above.':
+      'Try clearing the region or status filters above.',
+  'Capture your first scan and it will appear here.':
+      'Capture your first scan and it will appear here.',
+  'Could not load your body map': 'Could not load your body map',
+  'See full analysis': 'See full analysis',
 };
 
 const Map<String, String> esTranslations = {
@@ -725,4 +746,27 @@ const Map<String, String> esTranslations = {
   'Profile photo removed': 'Foto de perfil eliminada',
   'Could not remove photo — please try again':
       'No se pudo eliminar la foto — inténtalo de nuevo',
+
+  // ── Complete body map screen ────────────────────────────────────────
+  // 'Needs attention', 'Stable' and 'Total' reuse keys defined earlier in
+  // this map (home dashboard, scan history, etc.) — do not re-add them.
+  'REGION': 'REGIÓN',
+  'STATUS': 'ESTADO',
+  'All': 'Todos',
+  'RECENT SCANS': 'ESCANEOS RECIENTES',
+  'See all': 'Ver todos',
+  'Could not load recent scans': 'No se pudieron cargar los escaneos recientes',
+  'No scans for this region yet':
+      'Aún no hay escaneos para esta región',
+  'No scans yet — capture your first mole':
+      'Aún no hay escaneos — captura tu primer lunar',
+  'No moles match these filters':
+      'Ningún lunar coincide con estos filtros',
+  'No moles registered yet': 'Aún no hay lunares registrados',
+  'Try clearing the region or status filters above.':
+      'Intenta limpiar los filtros de región o estado arriba.',
+  'Capture your first scan and it will appear here.':
+      'Captura tu primer escaneo y aparecerá aquí.',
+  'Could not load your body map': 'No se pudo cargar tu mapa corporal',
+  'See full analysis': 'Ver análisis completo',
 };

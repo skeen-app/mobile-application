@@ -123,7 +123,27 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
       // reminder fires even when the app is closed. Reading the
       // controller provider also triggers reconciliation of past-due
       // reminders into the activity log.
-      await ref.read(localNotificationServiceProvider).initialize();
+      //
+      // The onTap callback receives the system tap on a fired reminder
+      // and routes the user to the in-app notifications list — without
+      // it the OS notification would still show, but tapping it would
+      // do nothing beyond opening the app.
+      await ref.read(localNotificationServiceProvider).initialize(
+        onTap: (id, payload) {
+          try {
+            // The router is the source of truth — pushNamed instead of
+            // go so the back button returns the user to wherever they
+            // were before they tapped the notification.
+            ref.read(appRouterProvider).pushNamed('notifications');
+          } catch (e, st) {
+            AppLogger.warning(
+              'onTap reminder route failed: $e',
+              tag: 'main',
+            );
+            if (kDebugMode) debugPrint('$st');
+          }
+        },
+      );
       ref.read(remindersControllerProvider);
     });
   }
@@ -132,6 +152,12 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.read(syncOrchestratorProvider).syncNow(reason: 'foreground');
+      // Reconcile past-due reminders the moment we come back to
+      // foreground. Without this, a reminder that fired while the app
+      // was backgrounded (and the OS notification appeared) wouldn't
+      // produce an in-app banner when the user opens skeen — they'd
+      // just see it in the activity log on next launch.
+      ref.read(remindersControllerProvider.notifier).reconcile();
     }
   }
 
