@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/widgets/tutorial_coach_mark.dart';
+import '../../../../core/widgets/tutorial_controller.dart';
 import '../../application/providers.dart';
 import '../widgets/web_unsupported_card.dart';
 import 'ar_scan_screen.dart';
@@ -24,8 +26,11 @@ class ScanRouterScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (kIsWeb) return const WebUnsupportedCard();
 
+    final tutorialStep = ref.watch(tutorialControllerProvider);
+
     final caps = ref.watch(arCapabilitiesProvider);
-    return caps.when(
+
+    final child = caps.when(
       loading: () => const Scaffold(
         backgroundColor: AppColors.background,
         body: Center(
@@ -38,6 +43,26 @@ class ScanRouterScreen extends ConsumerWidget {
       data: (c) => c.canRunArBridge
           ? const ArScanScreen()
           : const ScanAMoleScreen(),
+    );
+
+    if (tutorialStep != TutorialStep.cameraCapture) {
+      return child;
+    }
+
+    return Scaffold(
+      body: Stack(
+        children: [
+          child,
+          TutorialCoachMark(
+            isFloatingTooltip: true,
+            title: 'Capture your Mole',
+            description:
+                'Center the mole on your screen and use the AR camera to scan it '
+                'in real-time, or tap the gallery icon to upload a photo.',
+            onSkip: () => ref.read(tutorialControllerProvider.notifier).skip(),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -19,6 +19,7 @@ class TutorialOverlay extends StatefulWidget {
     super.key,
     required this.scanButtonCenter,
     required this.scanButtonRadius,
+    required this.userId,
   });
 
   /// Center of the "Scan" button in global coordinates, used by step 1
@@ -28,11 +29,15 @@ class TutorialOverlay extends StatefulWidget {
   /// Radius of the spotlight circle around the Scan button.
   final double scanButtonRadius;
 
+  /// Current user's ID — used to persist tutorial completion per-account.
+  final String userId;
+
   /// Push the tutorial on top of the current route.
   static Future<void> show(
     BuildContext context, {
     required Offset scanButtonCenter,
     required double scanButtonRadius,
+    required String userId,
   }) {
     return Navigator.of(context).push(
       PageRouteBuilder<void>(
@@ -41,6 +46,7 @@ class TutorialOverlay extends StatefulWidget {
         pageBuilder: (_, _, _) => TutorialOverlay(
           scanButtonCenter: scanButtonCenter,
           scanButtonRadius: scanButtonRadius,
+          userId: userId,
         ),
         transitionsBuilder: (_, animation, _, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -117,7 +123,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   void _skip() => _finish();
 
   void _finish() {
-    TutorialStorage.markCompleted();
+    TutorialStorage.markCompleted(widget.userId);
     Navigator.of(context).pop();
   }
 

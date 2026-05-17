@@ -10,7 +10,10 @@ import '../../../../core/network/api_exception.dart';
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/full_screen_image_viewer.dart';
+
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../../core/widgets/tutorial_coach_mark.dart';
+import '../../../../core/widgets/tutorial_controller.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../patient/application/lesion_summary_providers.dart';
 import '../../../patient/application/scan_history_providers.dart';
@@ -196,30 +199,47 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tutorialStep = ref.watch(tutorialControllerProvider);
+
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            const SkeenTopAppBar(
-              title: 'Mole detail',
-              subtitle: 'analysis mole',
-              showBack: true,
+      body: Stack(
+        children: [
+          SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                const SkeenTopAppBar(
+                  title: 'Mole detail',
+                  subtitle: 'analysis mole',
+                  showBack: true,
+                ),
+                Expanded(
+                  child: _loading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              AppColors.violetaClaro,
+                            ),
+                          ),
+                        )
+                      : _buildContent(),
+                ),
+              ],
             ),
-            Expanded(
-              child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          AppColors.violetaClaro,
-                        ),
-                      ),
-                    )
-                  : _buildContent(),
+          ),
+          if (tutorialStep == TutorialStep.reportDownload)
+            TutorialCoachMark(
+              isFloatingTooltip: true,
+              floatingAlignment: Alignment.bottomCenter,
+              title: 'Download your Report',
+              description:
+                  'After the analysis, download a detailed PDF report '
+                  'by tapping the PDF icon below to share with your dermatologist.',
+              onSkip: () =>
+                  ref.read(tutorialControllerProvider.notifier).finish(),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }

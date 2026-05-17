@@ -11,6 +11,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../../core/widgets/tutorial_controller.dart';
 import '../../../patient/application/lesion_summary_providers.dart';
 import '../../../patient/application/scan_history_providers.dart';
 import '../../application/detection_controller.dart';
@@ -283,7 +284,8 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
       ref.read(syncOrchestratorProvider).syncNow(reason: 'region-picked');
     }
     if (!mounted) return;
-    context.pushNamed(
+    ref.read(tutorialControllerProvider.notifier).advanceToReport();
+    context.pushReplacementNamed(
       'triage-result',
       extra: {
         'analysisId': state.savedAnalysisId!,

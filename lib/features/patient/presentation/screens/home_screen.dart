@@ -5,8 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_star_field.dart';
-import '../../../../core/widgets/tutorial_overlay.dart';
-import '../../../../core/widgets/tutorial_storage.dart';
+import '../../../../core/widgets/tutorial_coach_mark.dart';
+import '../../../../core/widgets/tutorial_controller.dart';
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../detection/application/sync_orchestrator.dart';
@@ -53,27 +53,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final extra = GoRouterState.of(context).extra;
     final shouldShow =
         extra is Map<String, dynamic> && extra['showTutorial'] == true;
-    if (!shouldShow) return;
-    // Don't show again if already completed.
-    final alreadyDone = await TutorialStorage.isCompleted();
-    if (alreadyDone || !mounted) return;
-    // Wait one frame so the bottom nav is laid out and we can measure
-    // the scan button's position.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      // The scan button is the 3rd of 5 equally-spaced items in the
-      // bottom nav, centred horizontally with vertical centre at
-      // screenHeight - safeBottom - navHeight/2.
-      final screenSize = MediaQuery.of(context).size;
-      final bottomPadding = MediaQuery.of(context).padding.bottom;
-      final navCenter = screenSize.height - bottomPadding - skeenBottomNavHeight / 2;
-      final scanCenter = Offset(screenSize.width / 2, navCenter);
-      TutorialOverlay.show(
-        context,
-        scanButtonCenter: scanCenter,
-        scanButtonRadius: 28,
-      );
-    });
+    if (shouldShow) {
+      ref.read(tutorialControllerProvider.notifier).start();
+    }
   }
 
   @override
@@ -84,6 +66,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final firstName = ref.watch(
       authControllerProvider.select((s) => s.user?.name),
     );
+    final tutorialStep = ref.watch(tutorialControllerProvider);
+
+    final screenSize = MediaQuery.of(context).size;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    const double skeenBottomNavHeight = 78;
+    final navCenter =
+        screenSize.height - bottomPadding - skeenBottomNavHeight / 2;
+    final scanCenter = Offset(screenSize.width / 2, navCenter);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -206,6 +196,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
+          
+          if (tutorialStep == TutorialStep.homeScan)
+            Positioned.fill(
+              child: TutorialCoachMark(
+                spotlightCenter: scanCenter,
+                spotlightRadius: 28,
+                title: 'Start a Scan',
+                description: 'Tap the Scan button to begin analyzing a mole on your skin.',
+                onSkip: () => ref.read(tutorialControllerProvider.notifier).skip(),
+              ),
+            ),
         ],
       ),
     );
@@ -218,6 +219,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       case SkeenNavTab.history:
         context.goNamed('history');
       case SkeenNavTab.scan:
+        ref.read(tutorialControllerProvider.notifier).advanceToCamera();
         context.pushNamed('scan-a-mole');
       case SkeenNavTab.experts:
         context.goNamed('experts');

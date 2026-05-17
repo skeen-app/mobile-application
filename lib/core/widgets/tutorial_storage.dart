@@ -1,21 +1,22 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Thin SharedPreferences wrapper — tracks whether the post-registration
-/// tutorial has been completed (or skipped) so it only shows once.
+/// tutorial has been completed (or skipped) so it only shows once per user.
 class TutorialStorage {
   TutorialStorage._();
 
-  static const _key = 'tutorial_completed';
+  static const _prefix = 'tutorial_completed_';
 
-  /// Returns `true` if the tutorial was already shown on this device.
-  static Future<bool> isCompleted() async {
+  /// Returns `true` if the tutorial was already shown for [userId].
+  static Future<bool> isCompleted(String userId) async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_key) ?? false;
+    return prefs.getBool('$_prefix$userId') ?? false;
   }
 
-  /// Persists the tutorial as done — will not show again.
-  static Future<void> markCompleted() async {
+  /// Persists the tutorial as done for [userId] — will not show again
+  /// for this account, but a fresh registration will see it.
+  static Future<void> markCompleted(String userId) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_key, true);
+    await prefs.setBool('$_prefix$userId', true);
   }
 }

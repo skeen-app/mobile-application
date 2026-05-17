@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../../core/notifications/notifications_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
+import '../../../../core/widgets/tutorial_controller.dart';
 import '../../../auth/application/auth_controller.dart';
 import '../../../auth/application/privacy_settings.dart';
 import '../../application/providers.dart';
@@ -202,6 +203,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       }
 
       if (!mounted) return;
+      ref.read(tutorialControllerProvider.notifier).advanceToReport();
       context.pushReplacementNamed(
         'triage-result',
         extra: {
