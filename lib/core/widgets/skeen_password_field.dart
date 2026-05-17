@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../features/auth/application/validators.dart';
@@ -94,8 +95,8 @@ class _PasswordRulesPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Your password must include:',
+          Text(
+            'Your password must include:'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontSize: 12,

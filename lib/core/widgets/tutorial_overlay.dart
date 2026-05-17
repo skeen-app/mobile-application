@@ -1,4 +1,5 @@
 
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -67,9 +68,9 @@ class _TutorialOverlayState extends State<TutorialOverlay>
   late final AnimationController _pulseController;
   late final Animation<double> _pulseAnimation;
 
-  static const _steps = [
+  static final _steps = [
     _TutorialStep(
-      title: 'Start a Scan',
+      title: 'Start a Scan'.tr,
       description:
           'Tap the Scan button at the center of the navigation bar to '
           'begin analyzing a mole on your skin.',
@@ -77,7 +78,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       hasSpotlight: true,
     ),
     _TutorialStep(
-      title: 'Capture your Mole',
+      title: 'Capture your Mole'.tr,
       description:
           'Use the AR camera to scan in real-time, or upload a photo '
           'from your gallery. Our AI will analyze the lesion instantly.',
@@ -85,7 +86,7 @@ class _TutorialOverlayState extends State<TutorialOverlay>
       hasSpotlight: false,
     ),
     _TutorialStep(
-      title: 'Download your Report',
+      title: 'Download your Report'.tr,
       description:
           'After the analysis, download a detailed PDF report to share '
           'with your dermatologist for professional follow-up.',
@@ -205,8 +206,8 @@ class _TutorialOverlayState extends State<TutorialOverlay>
             right: 16,
             child: TextButton(
               onPressed: _skip,
-              child: const Text(
-                'Skip',
+              child: Text(
+                'Skip'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w600,

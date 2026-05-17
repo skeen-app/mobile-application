@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -87,8 +88,8 @@ class _SkeenDateTimePickerSheetState extends State<_SkeenDateTimePickerSheet> {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Pick a date & time',
+            Text(
+              'Pick a date & time'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -143,7 +144,7 @@ class _SkeenDateTimePickerSheetState extends State<_SkeenDateTimePickerSheet> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Cancel'),
+                    child: Text('Cancel'.tr),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -160,7 +161,7 @@ class _SkeenDateTimePickerSheetState extends State<_SkeenDateTimePickerSheet> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Confirm'),
+                    child: Text('Confirm'.tr),
                   ),
                 ),
               ],

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -34,13 +35,13 @@ class ScanAMoleCard extends StatelessWidget {
                 child: _TelescopeStage(),
               ),
               const SizedBox(width: 4),
-              const Expanded(
+              Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Scan a mole',
+                      'Scan a mole'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
@@ -52,7 +53,7 @@ class ScanAMoleCard extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'AI analysis in seconds',
+                      'AI analysis in seconds'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w500,

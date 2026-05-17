@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -170,9 +171,9 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
       if (!mounted) return;
       if (pendingCloudDelete) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Removed locally — the cloud copy will be deleted once you are online.',
+              'Removed locally — the cloud copy will be deleted once you are online.'.tr,
             ),
           ),
         );
@@ -187,8 +188,8 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           tag: 'TriageDelete', error: e, stackTrace: st);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not delete this scan. Please try again.'),
+        SnackBar(
+          content: Text('Could not delete this scan. Please try again.'.tr),
         ),
       );
       setState(() => _deleting = false);
@@ -209,9 +210,9 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
             bottom: false,
             child: Column(
               children: [
-                const SkeenTopAppBar(
-                  title: 'Mole detail',
-                  subtitle: 'analysis mole',
+                SkeenTopAppBar(
+                  title: 'Mole detail'.tr,
+                  subtitle: 'analysis mole'.tr,
                   showBack: true,
                 ),
                 Expanded(
@@ -232,7 +233,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
             TutorialCoachMark(
               isFloatingTooltip: true,
               floatingAlignment: Alignment.bottomCenter,
-              title: 'Download your Report',
+              title: 'Download your Report'.tr,
               description:
                   'After the analysis, download a detailed PDF report '
                   'by tapping the PDF icon below to share with your dermatologist.',
@@ -473,7 +474,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
                   ? null
                   : () => context.canPop() ? context.pop() : context.go('/home'),
               icon: const Icon(Icons.check, size: 18),
-              label: const Text('Done'),
+              label: Text('Done'.tr),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.violeta,
                 foregroundColor: Colors.white,
@@ -546,7 +547,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           const Icon(Icons.error_outline,
               color: AppColors.hintText, size: 48),
           const SizedBox(height: 16),
-          const Text('Could not load analysis',
+          Text('Could not load analysis'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -557,7 +558,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           TextButton(
             onPressed: () =>
                 context.canPop() ? context.pop() : context.go('/home'),
-            child: const Text('Go back'),
+            child: Text('Go back'.tr),
           ),
         ],
       ),
@@ -681,13 +682,13 @@ class _DeleteConfirmDialog extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: AppColors.violetaOscuro),
       ),
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.delete_outline, color: AppColors.fucsia, size: 22),
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Delete this scan?',
+              'Delete this scan?'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -712,12 +713,12 @@ class _DeleteConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+          child: Text('Cancel'.tr),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
           style: FilledButton.styleFrom(backgroundColor: AppColors.fucsia),
-          child: const Text('Delete'),
+          child: Text('Delete'.tr),
         ),
       ],
     );

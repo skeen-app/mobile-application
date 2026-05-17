@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -246,9 +247,9 @@ class _PersonalInformationScreenState
           SafeArea(
             child: Column(
               children: [
-                const SkeenTopAppBar(
-                  title: 'Personal Information',
-                  subtitle: 'edit your details',
+                SkeenTopAppBar(
+                  title: 'Personal Information'.tr,
+                  subtitle: 'edit your details'.tr,
                 ),
                 Expanded(
                   child: user == null
@@ -468,8 +469,8 @@ class _SaveButton extends StatelessWidget {
                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                 ),
               )
-            : const Text(
-                'Save changes',
+            : Text(
+                'Save changes'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w500,
@@ -495,10 +496,10 @@ class _DangerZone extends StatelessWidget {
       children: [
         const _SectionHeader(text: 'DANGER ZONE'),
         const SizedBox(height: 8),
-        const Text(
-          'Deleting your account removes your sign-in credentials immediately. '
+        Text(
+          ('Deleting your account removes your sign-in credentials immediately. '
           'Your medical history is retained for traceability and is no longer '
-          'accessible from this app.',
+          'accessible from this app.').tr,
           style: TextStyle(
             fontFamily: 'Poppins',
             fontSize: 12,
@@ -529,14 +530,14 @@ class _DangerZone extends StatelessWidget {
                           AlwaysStoppedAnimation<Color>(AppColors.fucsia),
                     ),
                   )
-                : const Row(
+                : Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.delete_outline,
                           size: 18, color: AppColors.fucsia),
                       SizedBox(width: 8),
                       Text(
-                        'Delete account',
+                        'Delete account'.tr,
                         style: TextStyle(
                           fontFamily: 'Poppins',
                           fontWeight: FontWeight.w500,
@@ -567,8 +568,8 @@ class _DeleteConfirmDialog extends StatelessWidget {
       titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
       contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       actionsPadding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-      title: const Text(
-        'Delete account?',
+      title: Text(
+        'Delete account?'.tr,
         style: TextStyle(
           fontFamily: 'Poppins',
           fontWeight: FontWeight.w600,
@@ -576,9 +577,9 @@ class _DeleteConfirmDialog extends StatelessWidget {
           color: AppColors.violetaClaro,
         ),
       ),
-      content: const Text(
-        'This signs you out and removes your sign-in credentials. The action '
-        'cannot be undone from the app.',
+      content: Text(
+        ('This signs you out and removes your sign-in credentials. The action '
+        'cannot be undone from the app.').tr,
         style: TextStyle(
           fontFamily: 'Poppins',
           fontSize: 13,
@@ -589,8 +590,8 @@ class _DeleteConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text(
-            'Cancel',
+          child: Text(
+            'Cancel'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w500,
@@ -600,8 +601,8 @@ class _DeleteConfirmDialog extends StatelessWidget {
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text(
-            'Delete',
+          child: Text(
+            'Delete'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -38,7 +39,7 @@ class QualityVerifiedBadge extends StatelessWidget {
               ),
             ],
           ),
-          child: const Row(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
@@ -48,7 +49,7 @@ class QualityVerifiedBadge extends StatelessWidget {
               ),
               SizedBox(width: 8),
               Text(
-                'Quality Verified',
+                'Quality Verified'.tr,
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontWeight: FontWeight.w600,

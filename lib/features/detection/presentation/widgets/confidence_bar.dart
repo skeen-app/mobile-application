@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 /// Animated horizontal progress bar matching Figma tamizaje confidence display
@@ -23,8 +24,8 @@ class ConfidenceBar extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            const Text(
-              'AI Confidence',
+            Text(
+              'AI Confidence'.tr,
               style: TextStyle(
                 fontFamily: 'Inter',
                 fontWeight: FontWeight.w500,

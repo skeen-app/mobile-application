@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,7 +75,7 @@ class _CompleteProfileScreenState
       if (!mounted) return;
       await SkeenAlertDialog.showError(
         context,
-        title: 'We could not finish your profile',
+        title: 'We could not finish your profile'.tr,
         message: 'Please check your connection and try again.',
       );
     } finally {
@@ -116,11 +117,11 @@ class _CompleteProfileScreenState
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'We just need your DNI and phone number to finish '
+                  Text(
+                    ('We just need your DNI and phone number to finish '
                     'setting up your medical history. These are required '
                     'to keep your records consistent and won\'t change '
-                    'after you save them.',
+                    'after you save them.').tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 14,

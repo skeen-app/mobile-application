@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
@@ -102,7 +103,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
           ),
         ),
         content: Text(
-          'Permissions can only be revoked from system settings. Open them now?',
+          'Permissions can only be revoked from system settings. Open them now?'.tr,
           style: const TextStyle(
             color: AppColors.hintText,
             fontFamily: 'Poppins',
@@ -112,11 +113,11 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'.tr),
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Open settings'),
+            child: Text('Open settings'.tr),
           ),
         ],
       ),
@@ -137,8 +138,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
             fontWeight: FontWeight.w600,
           ),
         ),
-        content: const Text(
-          'You previously denied this permission. Enable it from system settings to continue.',
+        content: Text(
+          'You previously denied this permission. Enable it from system settings to continue.'.tr,
           style: TextStyle(
             color: AppColors.hintText,
             fontFamily: 'Poppins',
@@ -148,14 +149,14 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Not now'),
+            child: Text('Not now'.tr),
           ),
           TextButton(
             onPressed: () {
               Navigator.of(ctx).pop();
               openAppSettings();
             },
-            child: const Text('Open settings'),
+            child: Text('Open settings'.tr),
           ),
         ],
       ),
@@ -186,8 +187,8 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   const SizedBox(height: 40),
                   const _AccessHeading(),
                   const SizedBox(height: 24),
-                  const Text(
-                    'In order to analyze and save your history',
+                  Text(
+                    'In order to analyze and save your history'.tr,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Poppins',
@@ -199,7 +200,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   ),
                   const SizedBox(height: 32),
                   _PermissionCard(
-                    title: 'Camera',
+                    title: 'Camera'.tr,
                     description: 'To scan and analyze lunars',
                     iconPath: 'assets/images/camera_icon.svg',
                     iconBackground: const Color(0xFF381E75),
@@ -213,7 +214,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   ),
                   const SizedBox(height: 16),
                   _PermissionCard(
-                    title: 'Gallery',
+                    title: 'Gallery'.tr,
                     description: 'To scan and analyze lunars',
                     iconPath: 'assets/images/gallery_icon.svg',
                     iconBackground: const Color(0xFF172F5A),
@@ -227,7 +228,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   ),
                   const SizedBox(height: 16),
                   _PermissionCard(
-                    title: 'Notifications',
+                    title: 'Notifications'.tr,
                     description: 'To scan and analyze lunars',
                     iconPath: 'assets/images/notifications_icon.svg',
                     iconBackground: const Color(0xFF432338),

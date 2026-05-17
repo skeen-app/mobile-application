@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,16 +91,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           borderRadius: BorderRadius.circular(16),
           side: const BorderSide(color: AppColors.violetaOscuro),
         ),
-        title: const Text(
-          'Clear all notifications?',
+        title: Text(
+          'Clear all notifications?'.tr,
           style: TextStyle(
             fontFamily: 'Poppins',
             fontWeight: FontWeight.w600,
             color: AppColors.violetaClaro,
           ),
         ),
-        content: const Text(
-          'This will permanently remove every notification on this device.',
+        content: Text(
+          'This will permanently remove every notification on this device.'.tr,
           style: TextStyle(
             fontFamily: 'Poppins',
             color: AppColors.hintText,
@@ -108,14 +109,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: Text('Cancel'.tr),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.fucsia,
             ),
-            child: const Text('Clear all'),
+            child: Text('Clear all'.tr),
           ),
         ],
       ),
@@ -155,9 +156,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        const SkeenTopAppBar(
-          title: 'Notifications',
-          subtitle: 'your activity',
+        SkeenTopAppBar(
+          title: 'Notifications'.tr,
+          subtitle: 'your activity'.tr,
           showBack: true,
         ),
         if (hasItems)
@@ -419,8 +420,8 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'No notifications yet',
+            Text(
+              'No notifications yet'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -429,9 +430,9 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              "Activity from your scans, account changes and OTA updates "
-              "will appear here.",
+            Text(
+              ('Activity from your scans, account changes and OTA updates '
+              'will appear here.').tr,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Poppins',

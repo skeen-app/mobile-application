@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -35,8 +36,8 @@ class OnboardingScreen extends StatelessWidget {
                     children: [
                       const SkeenWordmark(),
                       const SizedBox(height: 50),
-                      const Text(
-                        'Your personal shield against skin cancer',
+                      Text(
+                        'Your personal shield against skin cancer'.tr,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontFamily: 'Poppins',

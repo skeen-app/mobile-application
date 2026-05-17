@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -109,9 +110,9 @@ class _ReadingLeft extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Expanded(
+            Expanded(
               child: Text(
-                'Temperature',
+                'Temperature'.tr,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -157,11 +158,11 @@ class _ReadingLeft extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            const Flexible(
+            Flexible(
               child: Padding(
                 padding: EdgeInsets.only(bottom: 4),
                 child: Text(
-                  'Celsius',
+                  'Celsius'.tr,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -209,13 +210,13 @@ class _UvDisclaimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
         Icon(Icons.info_outline_rounded, size: 12, color: AppColors.stroke),
         SizedBox(width: 4),
         Expanded(
           child: Text(
-            'UV data is approximate. Always consult local weather sources.',
+            'UV data is approximate. Always consult local weather sources.'.tr,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
@@ -260,8 +261,8 @@ class _ErrorLeft extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Temperature',
+        Text(
+          'Temperature'.tr,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(

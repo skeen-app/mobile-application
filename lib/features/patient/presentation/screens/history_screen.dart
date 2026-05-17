@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -86,9 +87,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           SafeArea(
             child: Column(
               children: [
-                const SkeenTopAppBar(
-                  title: 'Your history',
-                  subtitle: 'all your analysis',
+                SkeenTopAppBar(
+                  title: 'Your history'.tr,
+                  subtitle: 'all your analysis'.tr,
                 ),
                 Expanded(
                   child: Padding(
@@ -190,8 +191,8 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'No matches',
+            Text(
+              'No matches'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -200,8 +201,8 @@ class _EmptyState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Try a different search term or clear the active filters.',
+            Text(
+              'Try a different search term or clear the active filters.'.tr,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Poppins',
@@ -223,11 +224,11 @@ class _ErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 32),
         child: Text(
-          'Could not load your history. Pull to retry once the backend is up.',
+          'Could not load your history. Pull to retry once the backend is up.'.tr,
           textAlign: TextAlign.center,
           style: TextStyle(
             fontFamily: 'Poppins',

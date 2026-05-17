@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -35,8 +36,8 @@ class ForgotPasswordSuccessScreen extends StatelessWidget {
                     size: 80,
                   ),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Check your email',
+                  Text(
+                    'Check your email'.tr,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Poppins',
@@ -47,8 +48,8 @@ class ForgotPasswordSuccessScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Your request has been received. You will soon receive an email with instructions to follow.',
+                  Text(
+                    'Your request has been received. You will soon receive an email with instructions to follow.'.tr,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontFamily: 'Poppins',

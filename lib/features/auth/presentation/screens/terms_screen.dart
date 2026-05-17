@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,9 +10,9 @@ import '../../../../core/widgets/skeen_step_indicator.dart';
 class TermsScreen extends StatelessWidget {
   const TermsScreen({super.key});
 
-  static const List<_Clause> _clauses = [
+  static List<_Clause> _clauses = [
     _Clause(
-      title: 'Triage tool, not a medical diagnosis',
+      title: 'Triage tool, not a medical diagnosis'.tr,
       body:
           'skeen is an AI-assisted dermatological triage tool meant for '
           'self-monitoring and early-warning purposes only. The risk '
@@ -22,7 +23,7 @@ class TermsScreen extends StatelessWidget {
           'whenever a scan is flagged as high risk.',
     ),
     _Clause(
-      title: 'Your account & local data',
+      title: 'Your account & local data'.tr,
       body:
           'You are responsible for the accuracy of the information you '
           'provide at registration (name, DNI, email, phone) and for '
@@ -33,7 +34,7 @@ class TermsScreen extends StatelessWidget {
           'Security.',
     ),
     _Clause(
-      title: 'Optional cloud sync',
+      title: 'Optional cloud sync'.tr,
       body:
           'When cloud sync is ON, your scans are uploaded to a private '
           'bucket bound to your account and re-encrypted server-side. '
@@ -44,7 +45,7 @@ class TermsScreen extends StatelessWidget {
           'remain local-only.',
     ),
     _Clause(
-      title: 'AR camera, sensors & permissions',
+      title: 'AR camera, sensors & permissions'.tr,
       body:
           'skeen requests access to the camera, photo library, '
           'notifications, location and motion sensors strictly for the '
@@ -56,7 +57,7 @@ class TermsScreen extends StatelessWidget {
           'access" prompt where applicable.',
     ),
     _Clause(
-      title: 'Insights & external content',
+      title: 'Insights & external content'.tr,
       body:
           'The Insights feed proxies dermatology articles published by '
           'third-party sources (PubMed / NCBI). skeen does not author '
@@ -66,7 +67,7 @@ class TermsScreen extends StatelessWidget {
           'subject to the publisher\'s own terms of use.',
     ),
     _Clause(
-      title: 'Reminders & notifications',
+      title: 'Reminders & notifications'.tr,
       body:
           'skeen schedules local OS notifications based on the reminders '
           'you create. These alarms run on this device only and are not '
@@ -76,7 +77,7 @@ class TermsScreen extends StatelessWidget {
           '(e.g. confirming a scan was saved).',
     ),
     _Clause(
-      title: 'Right to erasure',
+      title: 'Right to erasure'.tr,
       body:
           'You may delete an individual scan from the Mole detail view '
           'or your entire account from Personal Information → Delete '
@@ -87,7 +88,7 @@ class TermsScreen extends StatelessWidget {
           'identity so the credentials can no longer sign in.',
     ),
     _Clause(
-      title: 'Acceptance & governing terms',
+      title: 'Acceptance & governing terms'.tr,
       body:
           'By tapping "Accept and continue" you confirm that you have '
           'read and agree to these terms, that you understand skeen is '

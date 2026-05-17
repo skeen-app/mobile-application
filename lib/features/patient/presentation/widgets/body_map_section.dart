@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -41,8 +42,8 @@ class BodyMapSection extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Text(
-              'BODY MAP',
+            Text(
+              'BODY MAP'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -59,8 +60,8 @@ class BodyMapSection extends StatelessWidget {
             GestureDetector(
               onTap: onCompleteView,
               behavior: HitTestBehavior.opaque,
-              child: const Text(
-                'Complete view',
+              child: Text(
+                'Complete view'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w500,
@@ -108,10 +109,10 @@ class BodyMapSection extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 6),
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.only(bottom: 4),
                           child: Text(
-                            'Registered moles',
+                            'Registered moles'.tr,
                             style: TextStyle(
                               fontFamily: 'Poppins',
                               fontWeight: FontWeight.w400,
@@ -294,11 +295,11 @@ class _Legend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: const [
+      children: [
         _LegendDot(color: Color(0xFFE46A1D)),
         SizedBox(width: 6),
         Text(
-          'Needs attention',
+          'Needs attention'.tr,
           style: TextStyle(
             fontFamily: 'Poppins',
             fontWeight: FontWeight.w400,
@@ -311,7 +312,7 @@ class _Legend extends StatelessWidget {
         _LegendDot(color: Color(0xFF9A7FEA)),
         SizedBox(width: 6),
         Text(
-          'Stable',
+          'Stable'.tr,
           style: TextStyle(
             fontFamily: 'Poppins',
             fontWeight: FontWeight.w400,
@@ -396,9 +397,9 @@ class _AddNewButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(9),
             border: Border.all(color: const Color(0xFF44248D)),
           ),
-          child: const Center(
+          child: Center(
             child: Text(
-              '+ Add new mole',
+              '+ Add new mole'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w500,

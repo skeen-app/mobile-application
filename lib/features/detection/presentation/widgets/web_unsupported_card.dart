@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,9 +19,9 @@ class WebUnsupportedCard extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Scan a mole',
-              subtitle: 'AI analysis in seconds',
+            SkeenTopAppBar(
+              title: 'Scan a mole'.tr,
+              subtitle: 'AI analysis in seconds'.tr,
             ),
             const Spacer(),
             Padding(
@@ -40,8 +41,8 @@ class WebUnsupportedCard extends StatelessWidget {
                       size: 56,
                     ),
                     const SizedBox(height: 16),
-                    const Text(
-                      'AR scan is mobile-only',
+                    Text(
+                      'AR scan is mobile-only'.tr,
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontFamily: 'Poppins',

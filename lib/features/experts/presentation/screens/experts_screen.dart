@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -41,7 +42,7 @@ class _ExpertsScreenState extends ConsumerState<ExpertsScreen> {
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open the article.')),
+        SnackBar(content: Text('Could not open the article.'.tr)),
       );
     }
   }
@@ -71,9 +72,9 @@ class _ExpertsScreenState extends ConsumerState<ExpertsScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Insights',
-              subtitle: 'expert tips on skin cancer',
+            SkeenTopAppBar(
+              title: 'Insights'.tr,
+              subtitle: 'expert tips on skin cancer'.tr,
             ),
             _SearchField(
               controller: _searchCtrl,
@@ -155,7 +156,7 @@ class _SearchField extends StatelessWidget {
                 );
               },
             ),
-            hintText: 'Search melanoma, sunscreen, biopsy…',
+            hintText: 'Search melanoma, sunscreen, biopsy…'.tr,
             hintStyle: const TextStyle(
               fontFamily: 'Poppins',
               color: AppColors.hintText,
@@ -459,9 +460,9 @@ class _CardFooter extends StatelessWidget {
         const Spacer(),
         Row(
           mainAxisSize: MainAxisSize.min,
-          children: const [
+          children: [
             Text(
-              'Read on PubMed',
+              'Read on PubMed'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -580,9 +581,9 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        const Center(
+        Center(
           child: Text(
-            'No articles match',
+            'No articles match'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,
@@ -592,8 +593,8 @@ class _EmptyState extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'Try a different keyword or pick another category.',
+        Text(
+          'Try a different keyword or pick another category.'.tr,
           textAlign: TextAlign.center,
           style: TextStyle(
             fontFamily: 'Poppins',

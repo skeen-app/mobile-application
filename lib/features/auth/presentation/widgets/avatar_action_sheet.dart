@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -54,12 +55,12 @@ class _AvatarActionSheet extends StatelessWidget {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Profile picture',
+                    'Profile picture'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w600,
@@ -70,12 +71,12 @@ class _AvatarActionSheet extends StatelessWidget {
                   ),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Choose how you want to update your photo.',
+                    'Choose how you want to update your photo.'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w400,
@@ -123,8 +124,8 @@ class _AvatarActionSheet extends StatelessWidget {
                       ),
                     ),
                   ),
-                  child: const Text(
-                    'Cancel',
+                  child: Text(
+                    'Cancel'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w500,

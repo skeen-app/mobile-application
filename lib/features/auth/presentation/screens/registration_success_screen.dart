@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,8 +38,8 @@ class RegistrationSuccessScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 const SkeenAuthHeader(),
                 const SizedBox(height: 24),
-                const Text(
-                  'Your information',
+                Text(
+                  'Your information'.tr,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 22,
@@ -48,8 +49,8 @@ class RegistrationSuccessScreen extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Please confirm the details below before continuing.',
+                Text(
+                  'Please confirm the details below before continuing.'.tr,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontSize: 16,

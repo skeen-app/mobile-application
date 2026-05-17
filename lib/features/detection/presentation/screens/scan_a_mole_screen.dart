@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -179,9 +180,9 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
         bottom: false,
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Scan a mole',
-              subtitle: 'AI analysis in seconds',
+            SkeenTopAppBar(
+              title: 'Scan a mole'.tr,
+              subtitle: 'AI analysis in seconds'.tr,
             ),
             Expanded(
               child: Padding(
@@ -246,7 +247,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                         ),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(
@@ -256,7 +257,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                           ),
                           SizedBox(width: 6),
                           Text(
-                            'AR not supported on this device',
+                            'AR not supported on this device'.tr,
                             style: TextStyle(
                               fontFamily: 'Poppins',
                               fontWeight: FontWeight.w500,
@@ -502,8 +503,8 @@ class _CameraUnavailable extends StatelessWidget {
             size: 48,
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Camera unavailable',
+          Text(
+            'Camera unavailable'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,

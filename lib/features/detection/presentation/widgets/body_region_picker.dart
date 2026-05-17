@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -57,8 +58,8 @@ class BodyRegionPicker extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Where is the mole located?',
+          Text(
+            'Where is the mole located?'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,
@@ -68,8 +69,8 @@ class BodyRegionPicker extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            'Select the body region for tracking',
+          Text(
+            'Select the body region for tracking'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w500,

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -331,9 +332,9 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
         bottom: false,
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Scan a mole',
-              subtitle: 'AR-AI guided · ARKit / ARCore',
+            SkeenTopAppBar(
+              title: 'Scan a mole'.tr,
+              subtitle: 'AR-AI guided · ARKit / ARCore'.tr,
             ),
             Expanded(
               child: Padding(
@@ -560,9 +561,9 @@ class _ArNativeView extends StatelessWidget {
         creationParamsCodec: StandardMessageCodec(),
       );
     }
-    return const Center(
+    return Center(
       child: Text(
-        'AR is not supported on this platform',
+        'AR is not supported on this platform'.tr,
         style: TextStyle(color: AppColors.violetaClaro, fontFamily: 'Poppins'),
       ),
     );
@@ -708,13 +709,13 @@ class _AnchorLostHint extends StatelessWidget {
           ),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.replay, color: AppColors.violetaClaro, size: 18),
             SizedBox(width: 8),
             Text(
-              'Aim back at the lesion',
+              'Aim back at the lesion'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -794,8 +795,8 @@ class _CameraUnavailable extends StatelessWidget {
             size: 48,
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Camera unavailable',
+          Text(
+            'Camera unavailable'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,

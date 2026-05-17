@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -118,8 +119,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 24),
                   const SkeenAuthHeader(),
                   const SizedBox(height: 32),
-                  const Text(
-                    'Log in',
+                  Text(
+                    'Log in'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 22,
@@ -129,8 +130,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Enter your credentials in order to log into your account',
+                  Text(
+                    'Enter your credentials in order to log into your account'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 16,
@@ -166,8 +167,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     alignment: Alignment.centerRight,
                     child: GestureDetector(
                       onTap: () => context.go('/forgot-password'),
-                      child: const Text(
-                        'Forgot your password?',
+                      child: Text(
+                        'Forgot your password?'.tr,
                         style: TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 14,
@@ -201,8 +202,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             alignment: PlaceholderAlignment.middle,
                             child: GestureDetector(
                               onTap: () => context.go('/register'),
-                              child: const Text(
-                                'Sign up',
+                              child: Text(
+                                'Sign up'.tr,
                                 style: TextStyle(
                                   fontFamily: 'Poppins',
                                   fontSize: 14,
@@ -246,7 +247,7 @@ class _OrDivider extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              'OR',
+              'OR'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -80,10 +81,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                   ),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
                 child: Text(
-                  'Filters',
+                  'Filters'.tr,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w600,
@@ -93,10 +94,10 @@ class _FilterSheetState extends State<_FilterSheet> {
                   ),
                 ),
               ),
-              const Padding(
+              Padding(
                 padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: Text(
-                  'Combine date, body region and risk to narrow the list.',
+                  'Combine date, body region and risk to narrow the list.'.tr,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w400,
@@ -139,8 +140,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                             ),
                           ),
                         ),
-                        child: const Text(
-                          'Reset',
+                        child: Text(
+                          'Reset'.tr,
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontWeight: FontWeight.w500,
@@ -169,8 +170,8 @@ class _FilterSheetState extends State<_FilterSheet> {
                             ),
                           );
                         },
-                        child: const Text(
-                          'Apply',
+                        child: Text(
+                          'Apply'.tr,
                           style: TextStyle(
                             fontFamily: 'Poppins',
                             fontWeight: FontWeight.w600,

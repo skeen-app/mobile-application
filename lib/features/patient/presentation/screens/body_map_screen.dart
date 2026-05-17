@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/widgets/skeen_bottom_nav.dart';
@@ -10,9 +11,9 @@ class BodyMapScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SkeenPlaceholderScreen(
-      title: 'Complete body map',
-      subtitle: 'track your moles',
+    return SkeenPlaceholderScreen(
+      title: 'Complete body map'.tr,
+      subtitle: 'track your moles'.tr,
       body:
           'Full-figure view with pannable mole markers and per-lesion history '
           'will live here.',

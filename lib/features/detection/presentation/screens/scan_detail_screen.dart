@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -209,7 +210,7 @@ class _ScanDetailScreenState extends ConsumerState<ScanDetailScreen> {
               TextButton(
                 onPressed: () =>
                     context.canPop() ? context.pop() : context.go('/home'),
-                child: const Text('Go back'),
+                child: Text('Go back'.tr),
               ),
             ],
           ),

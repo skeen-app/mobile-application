@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 import 'dart:typed_data';
 
@@ -241,9 +242,9 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Upload a photo',
-              subtitle: 'from your gallery',
+            SkeenTopAppBar(
+              title: 'Upload a photo'.tr,
+              subtitle: 'from your gallery'.tr,
               showBack: true,
             ),
             Expanded(child: _buildBody()),
@@ -306,8 +307,8 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Gallery access blocked',
+            Text(
+              'Gallery access blocked'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -316,9 +317,8 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Enable photo library access from system settings — '
-              'the same permission you saw during onboarding.',
+            Text(
+              ('Enable photo library access from system settings — ' 'the same permission you saw during onboarding.').tr,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontFamily: 'Poppins',
@@ -331,7 +331,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
             FilledButton.icon(
               onPressed: () => openAppSettings(),
               icon: const Icon(Icons.settings, size: 18),
-              label: const Text('Open settings'),
+              label: Text('Open settings'.tr),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.violeta,
                 padding:
@@ -341,7 +341,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
             const SizedBox(height: 8),
             TextButton(
               onPressed: _pickFromGallery,
-              child: const Text('Try again'),
+              child: Text('Try again'.tr),
             ),
           ],
         ),
@@ -384,7 +384,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
           OutlinedButton.icon(
             onPressed: _analyzing ? null : _pickFromGallery,
             icon: const Icon(Icons.photo_library_outlined, size: 18),
-            label: const Text('Pick a different photo'),
+            label: Text('Pick a different photo'.tr),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.violetaClaro,
               side: const BorderSide(color: Color(0xFF44248D)),
@@ -443,7 +443,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
                       color: Colors.white,
                     ),
                   )
-                : const Text('Analyze photo'),
+                : Text('Analyze photo'.tr),
           ),
         ],
       ),
@@ -491,8 +491,8 @@ class _RegionTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Body region',
+                    Text(
+                      'Body region'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -125,7 +126,7 @@ class _FloatingDiagnosisLabelState extends State<FloatingDiagnosisLabel>
                     ),
                     const SizedBox(width: 6),
                     Text(
-                      'AR DIAGNOSIS',
+                      'AR DIAGNOSIS'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
@@ -181,7 +182,7 @@ class _FloatingDiagnosisLabelState extends State<FloatingDiagnosisLabel>
                 if (widget.onTap != null) ...[
                   const SizedBox(height: 6),
                   Text(
-                    'Tap to view details →',
+                    'Tap to view details →'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontWeight: FontWeight.w500,

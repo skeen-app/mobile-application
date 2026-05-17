@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -53,10 +54,10 @@ class ScanHistorySearchBar extends StatelessWidget {
                       fontSize: 15,
                       color: AppColors.violetaClaro,
                     ),
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isCollapsed: true,
                       border: InputBorder.none,
-                      hintText: 'Search history...',
+                      hintText: 'Search history...'.tr,
                       hintStyle: TextStyle(
                         fontFamily: 'Poppins',
                         fontSize: 15,

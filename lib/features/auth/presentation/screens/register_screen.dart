@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -103,7 +104,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       final failure = ref.read(authControllerProvider).failure;
       await SkeenAlertDialog.showError(
         context,
-        title: 'We could not create your account',
+        title: 'We could not create your account'.tr,
         message: failure?.message ?? 'Please try again in a moment.',
       );
     }
@@ -154,8 +155,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   const SizedBox(height: 24),
                   const SkeenAuthHeader(),
                   const SizedBox(height: 24),
-                  const Text(
-                    'Enter your information',
+                  Text(
+                    'Enter your information'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 22,
@@ -165,8 +166,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Fill in the fields below',
+                  Text(
+                    'Fill in the fields below'.tr,
                     style: TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 16,
@@ -292,8 +293,8 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             alignment: PlaceholderAlignment.middle,
                             child: GestureDetector(
                               onTap: () => context.go('/login'),
-                              child: const Text(
-                                'Log in',
+                              child: Text(
+                                'Log in'.tr,
                                 style: TextStyle(
                                   fontFamily: 'Poppins',
                                   fontSize: 14,
@@ -385,7 +386,7 @@ class _RegisterOrDivider extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              'OR',
+              'OR'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,

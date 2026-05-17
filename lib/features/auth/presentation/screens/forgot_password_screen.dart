@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -99,8 +100,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       const SizedBox(height: 24),
                       const SkeenAuthHeader(),
                       const SizedBox(height: 32),
-                      const Text(
-                        'Forgot password?',
+                      Text(
+                        'Forgot password?'.tr,
                         style: TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 22,
@@ -110,8 +111,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Enter your email address and we will send you instructions to reset your password.',
+                      Text(
+                        'Enter your email address and we will send you instructions to reset your password.'.tr,
                         style: TextStyle(
                           fontFamily: 'Poppins',
                           fontSize: 16,
@@ -140,8 +141,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       Center(
                         child: GestureDetector(
                           onTap: () => context.go('/login'),
-                          child: const Text(
-                            'Back to login',
+                          child: Text(
+                            'Back to login'.tr,
                             style: TextStyle(
                               fontFamily: 'Poppins',
                               fontSize: 14,

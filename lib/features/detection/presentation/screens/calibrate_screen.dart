@@ -1,4 +1,5 @@
 
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -101,10 +102,10 @@ class _CalibrateScreenState extends State<CalibrateScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(horizontal: 20),
               child: Text(
-                'In order to calibrate the AI model correctly please provide a photo of your hand',
+                'In order to calibrate the AI model correctly please provide a photo of your hand'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 16,
@@ -167,9 +168,9 @@ class _CalibrateScreenState extends State<CalibrateScreen> {
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
+                  children: [
                     Text(
-                      'Make sure to:',
+                      'Make sure to:'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,

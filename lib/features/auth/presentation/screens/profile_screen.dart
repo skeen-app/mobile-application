@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -58,8 +59,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             child: Column(
               children: [
                 SkeenTopAppBar(
-                  title: 'Profile',
-                  subtitle: 'your personal info',
+                  title: 'Profile'.tr,
+                  subtitle: 'your personal info'.tr,
                   onBack: () {
                     final router = GoRouter.of(context);
                     if (router.canPop()) {
@@ -492,8 +493,8 @@ class _LogoutButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              const Text(
-                'Logout',
+              Text(
+                'Logout'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w500,

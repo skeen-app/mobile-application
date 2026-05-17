@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -51,7 +52,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   void recordPasswordChanged() {
     _push(
       type: NotificationType.passwordChanged,
-      title: 'Password reset requested',
+      title: 'Password reset requested'.tr,
       subtitle: "We've sent reset instructions to your email.",
     );
   }
@@ -62,7 +63,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   }) {
     _push(
       type: NotificationType.scanCompleted,
-      title: 'Scan saved',
+      title: 'Scan saved'.tr,
       subtitle: bodyRegion != null
           ? 'Captured a new lesion on your $bodyRegion.'
           : 'A new lesion was captured.',
@@ -78,7 +79,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
     final pct = (confidence * 100).clamp(0, 100).toStringAsFixed(0);
     _push(
       type: NotificationType.predictionReady,
-      title: 'Prediction ready',
+      title: 'Prediction ready'.tr,
       subtitle: '$label · $pct% confidence',
       payload: {'scanId': scanId},
     );
@@ -92,7 +93,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
     final pct = (confidence * 100).clamp(0, 100).toStringAsFixed(0);
     _push(
       type: NotificationType.highRiskDetected,
-      title: 'High-risk pattern detected',
+      title: 'High-risk pattern detected'.tr,
       subtitle: '$label · $pct%. Clinical review recommended.',
       payload: {'scanId': scanId},
     );
@@ -105,7 +106,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
         : '${pretty.take(pretty.length - 1).join(', ')} and ${pretty.last}';
     _push(
       type: NotificationType.profileEdited,
-      title: 'Profile updated',
+      title: 'Profile updated'.tr,
       subtitle: pretty.isEmpty ? null : 'Changed $summary.',
     );
   }
@@ -113,16 +114,16 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   void recordAvatarUpdated() {
     _push(
       type: NotificationType.avatarUpdated,
-      title: 'Profile photo updated',
-      subtitle: 'Your new avatar is now live.',
+      title: 'Profile photo updated'.tr,
+      subtitle: 'Your new avatar is now live.'.tr,
     );
   }
 
   void recordScanSyncedToCloud({required String scanId}) {
     _push(
       type: NotificationType.scanSyncedToCloud,
-      title: 'Scan backed up',
-      subtitle: 'Your scan was uploaded to your private cloud.',
+      title: 'Scan backed up'.tr,
+      subtitle: 'Your scan was uploaded to your private cloud.'.tr,
       payload: {'scanId': scanId},
     );
   }
@@ -146,7 +147,7 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   void recordModelUpdateInstalled({required String version}) {
     _push(
       type: NotificationType.modelUpdateInstalled,
-      title: 'AI model updated',
+      title: 'AI model updated'.tr,
       subtitle: 'Version $version is now active on your device.',
     );
   }
@@ -154,8 +155,8 @@ class NotificationsController extends StateNotifier<NotificationsState> {
   void recordReminderCheckup({required DateTime at}) {
     _push(
       type: NotificationType.reminderCheckup,
-      title: 'Checkup reminder set',
-      subtitle: 'You will be nudged to scan around this date.',
+      title: 'Checkup reminder set'.tr,
+      subtitle: 'You will be nudged to scan around this date.'.tr,
     );
   }
 

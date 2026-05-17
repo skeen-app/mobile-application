@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -123,8 +124,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     children: [
                                       Expanded(
                                         child: QuickActionTile(
-                                          title: 'Upload a photo',
-                                          subtitle: 'from your gallery',
+                                          title: 'Upload a photo'.tr,
+                                          subtitle: 'from your gallery'.tr,
                                           iconAsset:
                                               'assets/images/home/upload_icon.svg',
                                           iconBackgroundColor:
@@ -137,8 +138,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                       const SizedBox(width: 14),
                                       Expanded(
                                         child: QuickActionTile(
-                                          title: 'Reminder',
-                                          subtitle: 'set up a check-in',
+                                          title: 'Reminder'.tr,
+                                          subtitle: 'set up a check-in'.tr,
                                           iconAsset:
                                               'assets/images/home/calendar_icon.svg',
                                           iconBackgroundColor:
@@ -151,8 +152,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                     ],
                                   ),
                                   const SizedBox(height: 16),
-                                  const Text(
-                                    'TEMPERATURE',
+                                  Text(
+                                    'TEMPERATURE'.tr,
                                     style: TextStyle(
                                       fontFamily: 'Poppins',
                                       fontWeight: FontWeight.w600,
@@ -202,7 +203,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: TutorialCoachMark(
                 spotlightCenter: scanCenter,
                 spotlightRadius: 28,
-                title: 'Start a Scan',
+                title: 'Start a Scan'.tr,
                 description: 'Tap the Scan button to begin analyzing a mole on your skin.',
                 onSkip: () => ref.read(tutorialControllerProvider.notifier).skip(),
               ),

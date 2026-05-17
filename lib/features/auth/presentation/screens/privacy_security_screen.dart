@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,9 +23,9 @@ class PrivacySecurityScreen extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Privacy & Security',
-              subtitle: 'manage your data',
+            SkeenTopAppBar(
+              title: 'Privacy & Security'.tr,
+              subtitle: 'manage your data'.tr,
               showBack: true,
             ),
             Expanded(
@@ -47,7 +48,7 @@ class PrivacySecurityScreen extends ConsumerWidget {
                   _SectionHeader(label: 'YOUR DATA'),
                   const SizedBox(height: 8),
                   _PolicyCard(
-                    title: 'How your scans are stored',
+                    title: 'How your scans are stored'.tr,
                     body:
                         'Every photo is encrypted on your device with AES-256 '
                         'before being persisted. Even when cloud sync is on, '
@@ -57,7 +58,7 @@ class PrivacySecurityScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 12),
                   _PolicyCard(
-                    title: 'What we never store',
+                    title: 'What we never store'.tr,
                     body:
                         'Your name, DNI and contact details are kept on your '
                         'profile only. They are never written into the scan '
@@ -131,7 +132,7 @@ Future<void> _onChangePassword(BuildContext context, WidgetRef ref) async {
   } catch (_) {
     if (!context.mounted) return;
     messenger.showSnackBar(
-      const SnackBar(content: Text('Could not send instructions')),
+      SnackBar(content: Text('Could not send instructions'.tr)),
     );
   }
 }
@@ -205,12 +206,12 @@ class _ChangePasswordRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Change password',
+                      'Change password'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w600,
@@ -220,7 +221,7 @@ class _ChangePasswordRow extends StatelessWidget {
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Send reset instructions to your email',
+                      'Send reset instructions to your email'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w400,
@@ -286,8 +287,8 @@ class _ChangePasswordSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
-              'Reset your password',
+            Text(
+              'Reset your password'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -340,7 +341,7 @@ class _ChangePasswordSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Cancel'),
+                    child: Text('Cancel'.tr),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -355,7 +356,7 @@ class _ChangePasswordSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Send'),
+                    child: Text('Send'.tr),
                   ),
                 ),
               ],
@@ -401,9 +402,9 @@ class _CloudSyncTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Cloud sync of scans',
+                  'Cloud sync of scans'.tr,
                   style: TextStyle(
                     fontFamily: 'Poppins',
                     fontWeight: FontWeight.w600,
@@ -420,12 +421,12 @@ class _CloudSyncTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'When ON, your captured lesion photos are uploaded to a private '
+          Text(
+            ('When ON, your captured lesion photos are uploaded to a private '
             'bucket so you can access them from any device and your '
             'history is backed up. The image is re-encrypted at rest in '
             'cloud and never tied to your name or DNI. When OFF, scans '
-            'stay only on this phone.',
+            'stay only on this phone.').tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w400,

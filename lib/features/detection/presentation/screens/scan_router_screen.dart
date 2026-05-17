@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -55,7 +56,7 @@ class ScanRouterScreen extends ConsumerWidget {
           child,
           TutorialCoachMark(
             isFloatingTooltip: true,
-            title: 'Capture your Mole',
+            title: 'Capture your Mole'.tr,
             description:
                 'Center the mole on your screen and use the AR camera to scan it '
                 'in real-time, or tap the gallery icon to upload a photo.',

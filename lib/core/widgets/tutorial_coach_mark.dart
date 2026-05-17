@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
@@ -160,8 +161,8 @@ class _TutorialCoachMarkState extends State<TutorialCoachMark>
           right: 16,
           child: TextButton(
             onPressed: widget.onSkip,
-            child: const Text(
-              'Skip',
+            child: Text(
+              'Skip'.tr,
               style: TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -234,7 +235,7 @@ class _TutorialCoachMarkState extends State<TutorialCoachMark>
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Text('Got it'),
+                child: Text('Got it'.tr),
               ),
             ),
           ],

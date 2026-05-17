@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -36,7 +37,7 @@ class UvIndexDial extends StatelessWidget {
         children: [
           // "UV Index" label
           Text(
-            'UV Index',
+            'UV Index'.tr,
             style: TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,

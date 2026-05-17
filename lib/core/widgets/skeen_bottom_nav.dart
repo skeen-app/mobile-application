@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -199,8 +200,8 @@ class _ScanNavItem extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                'Scan',
+              Text(
+                'Scan'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontSize: 10,
