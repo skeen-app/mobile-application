@@ -427,7 +427,17 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                     permanentlyDenied: _permissionPermanentlyDenied,
                   )
                 else
-                  const _ArNativeView(),
+                  // Digital zoom: ARCore's native session ignores setZoom
+                  // calls on this build (the Kotlin handler is a no-op),
+                  // so we scale the PlatformView itself. Center-aligned
+                  // so the focal point stays put as the user pinches.
+                  ClipRect(
+                    child: Transform.scale(
+                      scale: _currentZoom,
+                      alignment: Alignment.center,
+                      child: const _ArNativeView(),
+                    ),
+                  ),
 
                 if (detection.phase == DetectionPhase.ready) ...[
                   ArReticleOverlay(quality: detection.readiness.lighting),
@@ -586,13 +596,23 @@ class _ArNativeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Recognizers that Flutter must claim from the native AR view so the
+    // parent GestureDetector (pinch-to-zoom) actually fires. With an
+    // empty set + opaque hit-test the native view used to swallow every
+    // touch — pinch never reached the Flutter side. By declaring a
+    // ScaleGestureRecognizer here Flutter wins it in the gesture arena
+    // and forwards it up the tree.
+    final gestureRecognizers = <Factory<OneSequenceGestureRecognizer>>{
+      Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+    };
+
     if (defaultTargetPlatform == TargetPlatform.android) {
       return PlatformViewLink(
         viewType: 'skeen.detection/ar_view',
         surfaceFactory: (context, controller) {
           return AndroidViewSurface(
             controller: controller as AndroidViewController,
-            gestureRecognizers: const <Factory<OneSequenceGestureRecognizer>>{},
+            gestureRecognizers: gestureRecognizers,
             hitTestBehavior: PlatformViewHitTestBehavior.opaque,
           );
         },
@@ -611,9 +631,10 @@ class _ArNativeView extends StatelessWidget {
       );
     }
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      return const UiKitView(
+      return UiKitView(
         viewType: 'skeen.detection/ar_view',
-        creationParamsCodec: StandardMessageCodec(),
+        creationParamsCodec: const StandardMessageCodec(),
+        gestureRecognizers: gestureRecognizers,
       );
     }
     return Center(

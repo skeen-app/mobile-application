@@ -269,14 +269,24 @@ class ScanCameraService implements ScanCameraServicePort {
   }
 
   /// Set the zoom level. Called by pinch gesture handler.
+  ///
+  /// Clamps the request to the device's actual [getMinZoomLevel] /
+  /// [getMaxZoomLevel] window — some phones (Motorola edge, Pixel
+  /// wide-angle stacks) report a min above 1.0 or a max below the value
+  /// the controller is happy to accept, and passing a value outside the
+  /// window throws a PlatformException that used to vanish into the
+  /// silent catch below.
   @override
   Future<void> setZoom(double level) async {
     final controller = _controller;
-    if (controller == null) return;
+    if (controller == null || !controller.value.isInitialized) return;
     try {
-      await controller.setZoomLevel(level);
-    } catch (e) {
-      if (kDebugMode) debugPrint('Zoom failed: $e');
+      final min = await controller.getMinZoomLevel();
+      final max = await controller.getMaxZoomLevel();
+      final clamped = level.clamp(min, max);
+      await controller.setZoomLevel(clamped);
+    } catch (e, st) {
+      if (kDebugMode) debugPrint('Zoom failed at $level: $e\n$st');
     }
   }
 

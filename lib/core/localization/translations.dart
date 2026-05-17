@@ -344,6 +344,14 @@ const Map<String, String> enTranslations = {
   'Camera access is blocked. Enable it from system settings to scan.':
       'Camera access is blocked. Enable it from system settings to scan.',
   'Grant camera access': 'Grant camera access',
+
+  // ── PDF report metadata ──────────────────────────────────────────────
+  'Captured at': 'Captured at',
+  'Distance': 'Distance',
+  'Image SHA-256': 'Image SHA-256',
+  'Analysis ID': 'Analysis ID',
+  'AI verdict': 'AI verdict',
+  'Captured lesion': 'Captured lesion',
 };
 
 const Map<String, String> esTranslations = {
@@ -691,4 +699,12 @@ const Map<String, String> esTranslations = {
   'Camera access is blocked. Enable it from system settings to scan.':
       'El acceso a la cámara está bloqueado. Habilítalo en la configuración del sistema para escanear.',
   'Grant camera access': 'Conceder acceso a la cámara',
+
+  // ── PDF report metadata ──────────────────────────────────────────────
+  'Captured at': 'Capturado el',
+  'Distance': 'Distancia',
+  'Image SHA-256': 'SHA-256 de imagen',
+  'Analysis ID': 'ID de análisis',
+  'AI verdict': 'Veredicto IA',
+  'Captured lesion': 'Lesión capturada',
 };
