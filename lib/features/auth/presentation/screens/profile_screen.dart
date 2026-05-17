@@ -153,7 +153,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await _pickAndUpload(context, ref, ImageSource.gallery);
       case AvatarAction.deletePhoto:
         // Backend DELETE endpoint not yet available.
-        _showSnackBar(context, 'Photo removal coming soon');
+        _showSnackBar(context, 'Photo removal coming soon'.tr);
     }
   }
 
@@ -175,8 +175,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       _showSnackBar(
         context,
         source == ImageSource.camera
-            ? 'Could not open the camera'
-            : 'Could not open the gallery',
+            ? 'Could not open the camera'.tr
+            : 'Could not open the gallery'.tr,
       );
       return;
     }
@@ -189,7 +189,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final filename = picked.name.isNotEmpty ? picked.name : 'avatar.jpg';
     final mimeType = picked.mimeType ?? _mimeFromName(filename);
 
-    _showSnackBar(context, 'Uploading photo…');
+    _showSnackBar(context, 'Uploading photo…'.tr);
 
     try {
       final newUrl = await ref
@@ -214,11 +214,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      _showSnackBar(context, 'Profile photo updated ✓');
+      _showSnackBar(context, 'Profile photo updated ✓'.tr);
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      _showSnackBar(context, 'Upload failed — please try again');
+      _showSnackBar(context, 'Upload failed — please try again'.tr);
     }
   }
 
@@ -366,14 +366,14 @@ class _StatsRow extends StatelessWidget {
       children: [
         Expanded(
           child: ProfileStatCard(
-            label: 'Registered\nMoles',
+            label: 'Registered\nMoles'.tr,
             value: molesText,
           ),
         ),
         const SizedBox(width: 14),
         Expanded(
           child: ProfileStatCard(
-            label: 'Next Checkup',
+            label: 'Next Checkup'.tr,
             value: nextCheckupText,
             valueColor: const Color(0xFFFFB690),
           ),
@@ -398,18 +398,17 @@ class _StatsRow extends StatelessWidget {
   ];
 
   String _formatNextCheckup(PatientProfileSummary? summary) {
-    if (summary == null) return 'No scans yet';
+    if (summary == null) return 'No scans yet'.tr;
     final at = summary.nextCheckupAt;
-    // User has an explicit reminder → show the reminder date.
+    // User has an explicit reminder → show the reminder date. Month names
+    // are localized individually so the spelling matches the active locale.
     if (at != null && summary.hasExplicitReminder) {
-      return '${_months[at.month - 1]} ${at.year}';
+      return '${_months[at.month - 1].tr} ${at.year}';
     }
-    // User has scanned (via nextCheckupAt heuristic OR moles registered)
-    // but no reminder → show "Next month".
     if (at != null || summary.registeredMoles > 0) {
-      return 'Next month';
+      return 'Next month'.tr;
     }
-    return 'No scans yet';
+    return 'No scans yet'.tr;
   }
 }
 
@@ -427,19 +426,19 @@ class _SettingsSection extends StatelessWidget {
         children: [
           ProfileSettingsRow(
             iconAsset: 'assets/images/profile/personal_info.svg',
-            label: 'Personal Information',
+            label: 'Personal Information'.tr,
             onTap: () => context.pushNamed('personal-info'),
           ),
           const _Divider(),
           ProfileSettingsRow(
             iconAsset: 'assets/images/profile/medical_history.svg',
-            label: 'Medical History',
+            label: 'Medical History'.tr,
             onTap: () => context.pushNamed('history'),
           ),
           const _Divider(),
           ProfileSettingsRow(
             iconAsset: 'assets/images/profile/privacy_security.svg',
-            label: 'Privacy & Security',
+            label: 'Privacy & Security'.tr,
             onTap: () => context.pushNamed('privacy-security'),
           ),
         ],

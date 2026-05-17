@@ -39,30 +39,30 @@ class PrivacySecurityScreen extends ConsumerWidget {
                         .setCloudSyncEnabled(v),
                   ),
                   const SizedBox(height: 16),
-                  _SectionHeader(label: 'ACCOUNT'),
+                  _SectionHeader(label: 'ACCOUNT'.tr),
                   const SizedBox(height: 8),
                   _ChangePasswordRow(
                     onTap: () => _onChangePassword(context, ref),
                   ),
                   const SizedBox(height: 16),
-                  _SectionHeader(label: 'YOUR DATA'),
+                  _SectionHeader(label: 'YOUR DATA'.tr),
                   const SizedBox(height: 8),
                   _PolicyCard(
                     title: 'How your scans are stored'.tr,
-                    body:
-                        'Every photo is encrypted on your device with AES-256 '
-                        'before being persisted. Even when cloud sync is on, '
-                        'the image is uploaded to a private bucket tied to '
-                        'your account — only you can request a download URL.',
+                    body: ('Every photo is encrypted on your device with AES-256 '
+                            'before being persisted. Even when cloud sync is on, '
+                            'the image is uploaded to a private bucket tied to '
+                            'your account — only you can request a download URL.')
+                        .tr,
                     icon: Icons.lock_outline,
                   ),
                   const SizedBox(height: 12),
                   _PolicyCard(
                     title: 'What we never store'.tr,
-                    body:
-                        'Your name, DNI and contact details are kept on your '
-                        'profile only. They are never written into the scan '
-                        'documents or filenames — the cloud copy is anonymous.',
+                    body: ('Your name, DNI and contact details are kept on your '
+                            'profile only. They are never written into the scan '
+                            'documents or filenames — the cloud copy is anonymous.')
+                        .tr,
                     icon: Icons.shield_moon_outlined,
                   ),
                 ],
@@ -301,9 +301,9 @@ class _ChangePasswordSheet extends StatelessWidget {
             Text.rich(
               TextSpan(
                 children: [
-                  const TextSpan(
+                  TextSpan(
                     text:
-                        "We'll email password reset instructions to ",
+                        "We'll email password reset instructions to ".tr,
                   ),
                   TextSpan(
                     text: maskedEmail,
@@ -312,9 +312,8 @@ class _ChangePasswordSheet extends StatelessWidget {
                       color: AppColors.violetaClaro,
                     ),
                   ),
-                  const TextSpan(
-                    text: ". Tap the link in the email to set a new "
-                        "password.",
+                  TextSpan(
+                    text: ". Tap the link in the email to set a new password.".tr,
                   ),
                 ],
               ),

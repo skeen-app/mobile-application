@@ -105,9 +105,11 @@ class _CompleteProfileScreenState
                   const SkeenAuthHeader(),
                   const SizedBox(height: 28),
                   Text(
+                    // Translate the static template, then interpolate the
+                    // name so the lookup key stays language-stable.
                     greetingName.isEmpty
-                        ? 'Almost there'
-                        : 'Almost there, $greetingName',
+                        ? 'Almost there'.tr
+                        : '${'Almost there'.tr}, $greetingName',
                     style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 22,
@@ -133,13 +135,13 @@ class _CompleteProfileScreenState
                   const SizedBox(height: 28),
                   if ((user?.email ?? '').isNotEmpty)
                     _ReadOnlyChip(
-                      label: 'Signed in with Google',
+                      label: 'Signed in with Google'.tr,
                       value: user!.email,
                     ),
                   if ((user?.email ?? '').isNotEmpty)
                     const SizedBox(height: 18),
                   SkeenTextField(
-                    label: 'DNI',
+                    label: 'DNI'.tr,
                     controller: _dniCtrl,
                     keyboardType: TextInputType.number,
                     inputFormatters: [
@@ -151,7 +153,7 @@ class _CompleteProfileScreenState
                   ),
                   const SizedBox(height: 16),
                   SkeenTextField(
-                    label: 'Phone Number',
+                    label: 'Phone Number'.tr,
                     controller: _phoneCtrl,
                     keyboardType: TextInputType.phone,
                     inputFormatters: [
@@ -164,7 +166,7 @@ class _CompleteProfileScreenState
                   ),
                   const SizedBox(height: 28),
                   SkeenButton.primary(
-                    label: 'Save and continue',
+                    label: 'Save and continue'.tr,
                     isLoading: _busy,
                     onPressed: _busy ? () {} : _submit,
                   ),

@@ -147,7 +147,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const _OrDivider(),
                   SkeenTextField(
-                    label: 'Email',
+                    label: 'Email'.tr,
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
@@ -156,7 +156,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
                   SkeenPasswordField(
-                    label: 'Password',
+                    label: 'Password'.tr,
                     controller: _passwordCtrl,
                     textInputAction: TextInputAction.done,
                     showRulesHelper: false,
@@ -182,7 +182,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   const SizedBox(height: 32),
                   SkeenButton.primary(
-                    label: "Let's get started!",
+                    label: "Let's get started!".tr,
                     onPressed: _onSubmit,
                     isLoading: isSubmitting,
                   ),
@@ -197,7 +197,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           color: AppColors.hintText,
                         ),
                         children: [
-                          const TextSpan(text: "Don't have an account yet? "),
+                          TextSpan(text: "Don't have an account yet? ".tr),
                           WidgetSpan(
                             alignment: PlaceholderAlignment.middle,
                             child: GestureDetector(

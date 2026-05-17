@@ -109,7 +109,7 @@ class _PersonalInformationScreenState
         ref.notifications.recordProfileEdited(fields: changedFields);
       }
       if (!mounted) return;
-      _showSnack('Profile updated', destructive: false);
+      _showSnack('Profile updated'.tr, destructive: false);
     } on AuthFailure catch (failure) {
       AppLogger.warning('Profile update failed: $failure',
           tag: 'PersonalInformationScreen');
@@ -119,7 +119,7 @@ class _PersonalInformationScreenState
       AppLogger.error('Profile update crashed',
           tag: 'PersonalInformationScreen', error: e, stackTrace: stack);
       if (!mounted) return;
-      setState(() => _error = 'Could not save changes. Please try again.');
+      setState(() => _error = 'Could not save changes. Please try again.'.tr);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -154,7 +154,7 @@ class _PersonalInformationScreenState
       AppLogger.error('Account deletion crashed',
           tag: 'PersonalInformationScreen', error: e, stackTrace: stack);
       if (!mounted) return;
-      setState(() => _error = 'Could not delete account. Please try again.');
+      setState(() => _error = 'Could not delete account. Please try again.'.tr);
     } finally {
       if (mounted) setState(() => _deleting = false);
     }
@@ -162,14 +162,14 @@ class _PersonalInformationScreenState
 
   static String _failureMessage(AuthFailure failure) {
     if (failure is NetworkFailure) {
-      return 'Network error. Check your connection.';
+      return 'Network error. Check your connection.'.tr;
     }
     if (failure is InvalidCredentialsFailure) {
-      return 'Your session expired. Please sign in again.';
+      return 'Your session expired. Please sign in again.'.tr;
     }
-    if (failure is ServerFailure) return 'Server error. Please try again.';
+    if (failure is ServerFailure) return 'Server error. Please try again.'.tr;
     if (failure is AuthApiFailure) return failure.message;
-    return 'Something went wrong.';
+    return 'Something went wrong.'.tr;
   }
 
   void _showSnack(String message, {required bool destructive}) {
@@ -265,22 +265,22 @@ class _PersonalInformationScreenState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const _SectionHeader(text: 'IDENTITY'),
+                              _SectionHeader(text: 'IDENTITY'.tr),
                               const SizedBox(height: 12),
                               SkeenTextField(
-                                label: 'First name',
+                                label: 'First name'.tr,
                                 controller: _nameCtrl,
                                 textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: 8),
                               SkeenTextField(
-                                label: 'Last name',
+                                label: 'Last name'.tr,
                                 controller: _lastNameCtrl,
                                 textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: 8),
                               SkeenTextField(
-                                label: 'Phone',
+                                label: 'Phone'.tr,
                                 controller: _phoneCtrl,
                                 keyboardType: TextInputType.phone,
                                 inputFormatters: [
@@ -291,20 +291,20 @@ class _PersonalInformationScreenState
                                 textInputAction: TextInputAction.done,
                               ),
                               const SizedBox(height: 18),
-                              const _SectionHeader(text: 'LOCKED'),
+                              _SectionHeader(text: 'LOCKED'.tr),
                               const SizedBox(height: 12),
                               _LockedField(
-                                label: 'DNI',
+                                label: 'DNI'.tr,
                                 value: _maskDni(user.dni),
                                 hint:
-                                    'Government ID — contact support to change.',
+                                    'Government ID — contact support to change.'.tr,
                               ),
                               const SizedBox(height: 12),
                               _LockedField(
-                                label: 'Email',
+                                label: 'Email'.tr,
                                 value: _maskEmail(user.email),
                                 hint:
-                                    'Used to sign in — change is not yet supported.',
+                                    'Used to sign in — change is not yet supported.'.tr,
                               ),
                               const SizedBox(height: 24),
                               if (_error != null)
@@ -494,7 +494,7 @@ class _DangerZone extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _SectionHeader(text: 'DANGER ZONE'),
+        _SectionHeader(text: 'DANGER ZONE'.tr),
         const SizedBox(height: 8),
         Text(
           ('Deleting your account removes your sign-in credentials immediately. '

@@ -9,6 +9,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -62,6 +63,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   Size _previewSize = Size.zero;
   String? _initError;
+  bool _permissionPermanentlyDenied = false;
   int _mappingElapsedMs = 0;
   int _readyStreakMs = 0;
   static const _mappingMinMs = 400;
@@ -92,16 +94,57 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   Future<void> _bootstrap() async {
     try {
+      // Camera permission gate: ARCore/ARKit silently fail to start when
+      // the OS has the permission set to denied. Re-prompting here
+      // catches the new-user flow where camera was declined during
+      // onboarding — the user grants now and AR boots in the same
+      // session instead of forcing a navigate-away-and-back.
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        if (!mounted) return;
+        setState(() {
+          _permissionPermanentlyDenied = status.isPermanentlyDenied;
+          _initError = status.isPermanentlyDenied
+              ? 'Camera access is blocked. Enable it from system settings to scan.'
+                  .tr
+              : 'Camera permission is required to scan.'.tr;
+        });
+        return;
+      }
+
       final session = ref.read(arSessionProvider);
       await session.start();
       _listenStreams();
       _startMappingTicker();
       _startAnchorRefresher();
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          _initError = null;
+          _permissionPermanentlyDenied = false;
+        });
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('AR bootstrap failed: $e');
       if (mounted) setState(() => _initError = e.toString());
     }
+  }
+
+  /// Re-runs [_bootstrap] from the empty-state retry button. When the
+  /// previous failure was a permanent denial we route through the system
+  /// settings page first — once the user comes back, the lifecycle
+  /// observer will re-call [_bootstrap] automatically.
+  Future<void> _retryBootstrap() async {
+    if (_permissionPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _initError = null;
+        _permissionPermanentlyDenied = false;
+      });
+    }
+    await _bootstrap();
   }
 
   void _listenStreams() {
@@ -237,8 +280,16 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The host Activity / SceneDelegate forwards lifecycle to the native
-    // AR session. Nothing to do here.
+    // The host Activity / SceneDelegate forwards normal lifecycle events
+    // to the native AR session, so we don't need to start/stop here.
+    //
+    // What we DO need to handle: resume after a system permission dialog
+    // or a trip to app-settings. In that case [_initError] is set from
+    // the previous failed bootstrap; rerun it so a freshly-granted camera
+    // permission lights up AR immediately without a screen pop.
+    if (state == AppLifecycleState.resumed && _initError != null) {
+      _bootstrap();
+    }
   }
 
   @override
@@ -370,7 +421,11 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
               fit: StackFit.expand,
               children: [
                 if (_initError != null)
-                  _CameraUnavailable(message: _initError!)
+                  _CameraUnavailable(
+                    message: _initError!,
+                    onRetry: _retryBootstrap,
+                    permanentlyDenied: _permissionPermanentlyDenied,
+                  )
                 else
                   const _ArNativeView(),
 
@@ -779,8 +834,17 @@ class _SecondaryAction extends StatelessWidget {
 }
 
 class _CameraUnavailable extends StatelessWidget {
-  const _CameraUnavailable({required this.message});
+  const _CameraUnavailable({
+    required this.message,
+    this.onRetry,
+    this.permanentlyDenied = false,
+  });
+
   final String message;
+  final VoidCallback? onRetry;
+  // When true the retry CTA opens system settings instead of re-prompting
+  // (the OS won't show its native dialog after two denials).
+  final bool permanentlyDenied;
 
   @override
   Widget build(BuildContext context) {
@@ -814,6 +878,32 @@ class _CameraUnavailable extends StatelessWidget {
               color: AppColors.hintText,
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: Icon(
+                permanentlyDenied ? Icons.settings_outlined : Icons.refresh,
+                size: 18,
+              ),
+              label: Text(
+                permanentlyDenied
+                    ? 'Open settings'.tr
+                    : 'Grant camera access'.tr,
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.violeta,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

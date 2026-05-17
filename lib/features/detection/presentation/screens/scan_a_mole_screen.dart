@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -46,6 +47,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
   CaptureReadiness _readiness = CaptureReadiness.initializing;
   bool _showShutterFlash = false;
   String? _initError;
+  bool _permissionPermanentlyDenied = false;
   Size _previewSize = Size.zero;
 
   // Pinch-to-zoom state
@@ -64,6 +66,24 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
 
   Future<void> _bootstrap() async {
     try {
+      // Camera permission gate: the camera plugin throws when permission
+      // is denied. Re-prompting here covers the new-user case where the
+      // permission was declined at onboarding — the user grants now and
+      // the camera lights up immediately, without needing to navigate
+      // away and back.
+      final status = await Permission.camera.request();
+      if (!status.isGranted) {
+        if (!mounted) return;
+        setState(() {
+          _permissionPermanentlyDenied = status.isPermanentlyDenied;
+          _initError = status.isPermanentlyDenied
+              ? 'Camera access is blocked. Enable it from system settings to scan.'
+                  .tr
+              : 'Camera permission is required to scan.'.tr;
+        });
+        return;
+      }
+
       await _camera.initialize();
       _maxZoom = await _camera.getMaxZoom();
 
@@ -79,21 +99,48 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
         ref.read(detectionControllerProvider.notifier).updateReadiness(r);
       });
 
-      if (mounted) setState(() {});
+      if (mounted) {
+        setState(() {
+          _initError = null;
+          _permissionPermanentlyDenied = false;
+        });
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('Camera init failed: $e');
       if (mounted) setState(() => _initError = e.toString());
     }
   }
 
+  /// Empty-state retry CTA — opens system settings when the permission is
+  /// permanently denied (OS won't show its dialog again), otherwise reruns
+  /// the bootstrap which will re-request permission.
+  Future<void> _retryBootstrap() async {
+    if (_permissionPermanentlyDenied) {
+      await openAppSettings();
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _initError = null;
+        _permissionPermanentlyDenied = false;
+      });
+    }
+    await _bootstrap();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _camera.controller;
-    if (controller == null) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      _camera.dispose();
+      // Only release the camera when it was actually live. Skipping this
+      // when controller is null also avoids a NoSuchMethodError on a
+      // bootstrap that never reached initialize() (permission denied).
+      if (controller != null) _camera.dispose();
     } else if (state == AppLifecycleState.resumed) {
+      // Always retry on resume — handles BOTH the normal background-
+      // foreground cycle (reattach the camera) AND the post-permission-
+      // dialog case where a previous bootstrap aborted with _initError.
       _bootstrap();
     }
   }
@@ -218,7 +265,11 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
               fit: StackFit.expand,
               children: [
                 if (_initError != null)
-                  _CameraUnavailable(message: _initError!)
+                  _CameraUnavailable(
+                    message: _initError!,
+                    onRetry: _retryBootstrap,
+                    permanentlyDenied: _permissionPermanentlyDenied,
+                  )
                 else if (_camera.isReady)
                   _FittedPreview(controller: _camera.controller!)
                 else
@@ -487,8 +538,17 @@ class _SecondaryAction extends StatelessWidget {
 }
 
 class _CameraUnavailable extends StatelessWidget {
-  const _CameraUnavailable({required this.message});
+  const _CameraUnavailable({
+    required this.message,
+    this.onRetry,
+    this.permanentlyDenied = false,
+  });
+
   final String message;
+  final VoidCallback? onRetry;
+  // When true the retry CTA opens system settings instead of re-prompting
+  // (the OS won't show its native dialog after two denials).
+  final bool permanentlyDenied;
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +582,32 @@ class _CameraUnavailable extends StatelessWidget {
               color: AppColors.hintText,
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: Icon(
+                permanentlyDenied ? Icons.settings_outlined : Icons.refresh,
+                size: 18,
+              ),
+              label: Text(
+                permanentlyDenied
+                    ? 'Open settings'.tr
+                    : 'Grant camera access'.tr,
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.violeta,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

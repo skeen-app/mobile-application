@@ -86,7 +86,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not generate PDF: $e')),
+          SnackBar(content: Text('${'Could not generate PDF'.tr}: $e')),
         );
       }
     } finally {
@@ -410,7 +410,8 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
   }
 
   Widget _buildMetadataTiles(LesionAnalysis analysis) {
-    final bodyRegion = widget.bodyRegion ?? analysis.bodyRegion ?? 'Not set';
+    final bodyRegion =
+        widget.bodyRegion ?? analysis.bodyRegion ?? 'Not set'.tr;
     final capturedAt = DateFormat('MMM d, y').format(analysis.capturedAt);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 21),
@@ -419,7 +420,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           Expanded(
             child: _MetadataTile(
               icon: Icons.pin_drop_outlined,
-              label: 'LOCATION',
+              label: 'LOCATION'.tr,
               value: bodyRegion,
             ),
           ),
@@ -427,7 +428,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
           Expanded(
             child: _MetadataTile(
               icon: Icons.calendar_today_outlined,
-              label: 'CAPTURED',
+              label: 'CAPTURED'.tr,
               value: capturedAt,
             ),
           ),
@@ -451,7 +452,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: Text(_exporting ? 'Generating…' : 'Download PDF'),
+              label: Text(_exporting ? 'Generating…'.tr : 'Download PDF'.tr),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.violetaClaro,
                 side: const BorderSide(color: Color(0xFF44248D)),
@@ -517,7 +518,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
                   color: AppColors.fucsia,
                 ),
           label: Text(
-            _deleting ? 'Deleting…' : 'Delete this scan',
+            _deleting ? 'Deleting…'.tr : 'Delete this scan'.tr,
             style: const TextStyle(color: AppColors.fucsia),
           ),
           style: OutlinedButton.styleFrom(
@@ -579,25 +580,28 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
   String _riskTitle(WarningLevel level) {
     switch (level) {
       case WarningLevel.alert:
-        return 'High Risk Detected';
+        return 'High Risk Detected'.tr;
       case WarningLevel.caution:
-        return 'Medium Risk Detected';
+        return 'Medium Risk Detected'.tr;
       case WarningLevel.reassuring:
-        return 'Low Risk Detected';
+        return 'Low Risk Detected'.tr;
     }
   }
 
   String _riskDescription(InferenceResult result) {
     switch (result.warningLevel) {
       case WarningLevel.alert:
-        return 'High-risk patterns identified. Urgent clinical review '
-            'is strongly recommended. Please consult a dermatologist.';
+        return ('High-risk patterns identified. Urgent clinical review '
+                'is strongly recommended. Please consult a dermatologist.')
+            .tr;
       case WarningLevel.caution:
-        return 'Atypical patterns identified. Clinical review suggested '
-            'based on visual analysis markers.';
+        return ('Atypical patterns identified. Clinical review suggested '
+                'based on visual analysis markers.')
+            .tr;
       case WarningLevel.reassuring:
-        return 'No concerning patterns identified. Continue routine '
-            'self-monitoring and periodic dermatological check-ups.';
+        return ('No concerning patterns identified. Continue routine '
+                'self-monitoring and periodic dermatological check-ups.')
+            .tr;
     }
   }
 }
@@ -675,7 +679,7 @@ class _DeleteConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final region = bodyRegion ?? 'this scan';
+    final region = bodyRegion ?? 'this scan'.tr;
     return AlertDialog(
       backgroundColor: AppColors.background,
       shape: RoundedRectangleBorder(
@@ -700,9 +704,11 @@ class _DeleteConfirmDialog extends StatelessWidget {
         ],
       ),
       content: Text(
-        'This permanently removes the photo and analysis on $region '
-        'from this device and from your private cloud. '
-        'This action cannot be undone.',
+        // Template parts translated separately; the dynamic body region is
+        // inlined between them so the lookup key stays language-stable.
+        '${'This permanently removes the photo and analysis on'.tr} $region '
+        '${'from this device and from your private cloud.'.tr} '
+        '${'This action cannot be undone.'.tr}',
         style: const TextStyle(
           fontFamily: 'Poppins',
           color: AppColors.hintText,

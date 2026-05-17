@@ -216,6 +216,134 @@ const Map<String, String> enTranslations = {
   '\$label · \$pct%. Clinical review recommended.': '\$label · \$pct%. Clinical review recommended.',
   'Instructions sent to \${result.maskedEmail}': 'Instructions sent to \${result.maskedEmail}',
   'Your account & local data': 'Your account & local data',
+
+  // ── Form labels (shared by auth screens) ─────────────────────────────
+  'Name': 'Name',
+  'Last Name': 'Last Name',
+  'Email': 'Email',
+  'DNI': 'DNI',
+  'Phone Number': 'Phone Number',
+  'Password': 'Password',
+  'Confirm your password': 'Confirm your password',
+  'First name': 'First name',
+  'Last name': 'Last name',
+  'Phone': 'Phone',
+
+  // ── Auth buttons / footer links ──────────────────────────────────────
+  'Continue': 'Continue',
+  "Let's get started!": "Let's get started!",
+  'Send instructions': 'Send instructions',
+  'Save and continue': 'Save and continue',
+  'Already have an account? ': 'Already have an account? ',
+  "Don't have an account yet? ": "Don't have an account yet? ",
+  'Almost there': 'Almost there',
+  'Signed in with Google': 'Signed in with Google',
+
+  // ── Inline form helpers (static template — counter appended at runtime) ─
+  'Use a valid format, e.g. name@example.com.':
+      'Use a valid format, e.g. name@example.com.',
+  'Your DNI must be exactly 8 digits': 'Your DNI must be exactly 8 digits',
+  'Peruvian mobile numbers have 9 digits':
+      'Peruvian mobile numbers have 9 digits',
+
+  // ── Errors, snackbars, async statuses ────────────────────────────────
+  'Could not save changes. Please try again.':
+      'Could not save changes. Please try again.',
+  'Could not delete account. Please try again.':
+      'Could not delete account. Please try again.',
+  'Network error. Check your connection.':
+      'Network error. Check your connection.',
+  'Your session expired. Please sign in again.':
+      'Your session expired. Please sign in again.',
+  'Server error. Please try again.': 'Server error. Please try again.',
+  'Something went wrong.': 'Something went wrong.',
+  'Photo removal coming soon': 'Photo removal coming soon',
+  'Could not open the camera': 'Could not open the camera',
+  'Could not open the gallery': 'Could not open the gallery',
+  'Uploading photo…': 'Uploading photo…',
+  'Profile photo updated ✓': 'Profile photo updated ✓',
+  'Upload failed — please try again': 'Upload failed — please try again',
+  'Could not generate PDF': 'Could not generate PDF',
+
+  // ── Personal information sections ────────────────────────────────────
+  'IDENTITY': 'IDENTITY',
+  'LOCKED': 'LOCKED',
+  'DANGER ZONE': 'DANGER ZONE',
+  'Government ID — contact support to change.':
+      'Government ID — contact support to change.',
+  'Used to sign in — change is not yet supported.':
+      'Used to sign in — change is not yet supported.',
+
+  // ── Profile dashboard ────────────────────────────────────────────────
+  'Registered\nMoles': 'Registered\nMoles',
+  'Next Checkup': 'Next Checkup',
+  'No scans yet': 'No scans yet',
+  'Next month': 'Next month',
+  'Medical History': 'Medical History',
+
+  // ── Months (used in profile next-checkup tile) ───────────────────────
+  'January': 'January',
+  'February': 'February',
+  'March': 'March',
+  'April': 'April',
+  'May': 'May',
+  'June': 'June',
+  'July': 'July',
+  'August': 'August',
+  'September': 'September',
+  'October': 'October',
+  'November': 'November',
+  'December': 'December',
+
+  // ── Permissions screen ───────────────────────────────────────────────
+  'To scan and analyze lunars': 'To scan and analyze lunars',
+
+  // ── Reminders screen ─────────────────────────────────────────────────
+  'NEW REMINDER': 'NEW REMINDER',
+  'UPCOMING': 'UPCOMING',
+
+  // ── Privacy & Security ───────────────────────────────────────────────
+  'ACCOUNT': 'ACCOUNT',
+  'YOUR DATA': 'YOUR DATA',
+  'Every photo is encrypted on your device with AES-256 before being persisted. Even when cloud sync is on, the image is uploaded to a private bucket tied to your account — only you can request a download URL.':
+      'Every photo is encrypted on your device with AES-256 before being persisted. Even when cloud sync is on, the image is uploaded to a private bucket tied to your account — only you can request a download URL.',
+  'Your name, DNI and contact details are kept on your profile only. They are never written into the scan documents or filenames — the cloud copy is anonymous.':
+      'Your name, DNI and contact details are kept on your profile only. They are never written into the scan documents or filenames — the cloud copy is anonymous.',
+  "We'll email password reset instructions to ":
+      "We'll email password reset instructions to ",
+  '. Tap the link in the email to set a new password.':
+      '. Tap the link in the email to set a new password.',
+
+  // ── Triage detail screen ─────────────────────────────────────────────
+  'this scan': 'this scan',
+  'This permanently removes the photo and analysis on':
+      'This permanently removes the photo and analysis on',
+  'from this device and from your private cloud.':
+      'from this device and from your private cloud.',
+  'This action cannot be undone.': 'This action cannot be undone.',
+  'High Risk Detected': 'High Risk Detected',
+  'Medium Risk Detected': 'Medium Risk Detected',
+  'Low Risk Detected': 'Low Risk Detected',
+  'High-risk patterns identified. Urgent clinical review is strongly recommended. Please consult a dermatologist.':
+      'High-risk patterns identified. Urgent clinical review is strongly recommended. Please consult a dermatologist.',
+  'Atypical patterns identified. Clinical review suggested based on visual analysis markers.':
+      'Atypical patterns identified. Clinical review suggested based on visual analysis markers.',
+  'No concerning patterns identified. Continue routine self-monitoring and periodic dermatological check-ups.':
+      'No concerning patterns identified. Continue routine self-monitoring and periodic dermatological check-ups.',
+  'Not set': 'Not set',
+  'LOCATION': 'LOCATION',
+  'CAPTURED': 'CAPTURED',
+  'Download PDF': 'Download PDF',
+  'Generating…': 'Generating…',
+  'Delete this scan': 'Delete this scan',
+  'Deleting…': 'Deleting…',
+
+  // ── Camera permission recovery (scan flow) ───────────────────────────
+  'Camera permission is required to scan.':
+      'Camera permission is required to scan.',
+  'Camera access is blocked. Enable it from system settings to scan.':
+      'Camera access is blocked. Enable it from system settings to scan.',
+  'Grant camera access': 'Grant camera access',
 };
 
 const Map<String, String> esTranslations = {
@@ -434,4 +562,133 @@ const Map<String, String> esTranslations = {
   '\$label · \$pct%. Clinical review recommended.': '\$label · \$pct%. Revisión clínica recomendada.',
   'Instructions sent to \${result.maskedEmail}': 'Instrucciones enviadas a \${result.maskedEmail}',
   'Your account & local data': 'Tu cuenta y datos locales',
+
+  // ── Form labels (shared by auth screens) ─────────────────────────────
+  'Name': 'Nombre',
+  'Last Name': 'Apellido',
+  'Email': 'Correo electrónico',
+  'DNI': 'DNI',
+  'Phone Number': 'Número de teléfono',
+  'Password': 'Contraseña',
+  'Confirm your password': 'Confirma tu contraseña',
+  'First name': 'Nombre',
+  'Last name': 'Apellido',
+  'Phone': 'Teléfono',
+
+  // ── Auth buttons / footer links ──────────────────────────────────────
+  'Continue': 'Continuar',
+  "Let's get started!": '¡Comencemos!',
+  'Send instructions': 'Enviar instrucciones',
+  'Save and continue': 'Guardar y continuar',
+  'Already have an account? ': '¿Ya tienes una cuenta? ',
+  "Don't have an account yet? ": '¿Aún no tienes una cuenta? ',
+  'Almost there': 'Ya casi',
+  'Signed in with Google': 'Iniciaste sesión con Google',
+
+  // ── Inline form helpers (static template — counter appended at runtime) ─
+  'Use a valid format, e.g. name@example.com.':
+      'Usa un formato válido, ej. nombre@ejemplo.com.',
+  'Your DNI must be exactly 8 digits':
+      'Tu DNI debe tener exactamente 8 dígitos',
+  'Peruvian mobile numbers have 9 digits':
+      'Los números móviles peruanos tienen 9 dígitos',
+
+  // ── Errors, snackbars, async statuses ────────────────────────────────
+  'Could not save changes. Please try again.':
+      'No se pudieron guardar los cambios. Inténtalo de nuevo.',
+  'Could not delete account. Please try again.':
+      'No se pudo eliminar la cuenta. Inténtalo de nuevo.',
+  'Network error. Check your connection.':
+      'Error de red. Verifica tu conexión.',
+  'Your session expired. Please sign in again.':
+      'Tu sesión expiró. Por favor inicia sesión nuevamente.',
+  'Server error. Please try again.': 'Error del servidor. Inténtalo de nuevo.',
+  'Something went wrong.': 'Algo salió mal.',
+  'Photo removal coming soon': 'Eliminación de foto próximamente',
+  'Could not open the camera': 'No se pudo abrir la cámara',
+  'Could not open the gallery': 'No se pudo abrir la galería',
+  'Uploading photo…': 'Subiendo foto…',
+  'Profile photo updated ✓': 'Foto de perfil actualizada ✓',
+  'Upload failed — please try again': 'Falló la carga — inténtalo de nuevo',
+  'Could not generate PDF': 'No se pudo generar el PDF',
+
+  // ── Personal information sections ────────────────────────────────────
+  'IDENTITY': 'IDENTIDAD',
+  'LOCKED': 'BLOQUEADO',
+  'DANGER ZONE': 'ZONA DE PELIGRO',
+  'Government ID — contact support to change.':
+      'Documento de identidad — contacta a soporte para cambiarlo.',
+  'Used to sign in — change is not yet supported.':
+      'Usado para iniciar sesión — el cambio aún no está soportado.',
+
+  // ── Profile dashboard ────────────────────────────────────────────────
+  'Registered\nMoles': 'Lunares\nregistrados',
+  'Next Checkup': 'Próximo chequeo',
+  'No scans yet': 'Sin escaneos aún',
+  'Next month': 'Próximo mes',
+  'Medical History': 'Historial médico',
+
+  // ── Months (used in profile next-checkup tile) ───────────────────────
+  'January': 'Enero',
+  'February': 'Febrero',
+  'March': 'Marzo',
+  'April': 'Abril',
+  'May': 'Mayo',
+  'June': 'Junio',
+  'July': 'Julio',
+  'August': 'Agosto',
+  'September': 'Septiembre',
+  'October': 'Octubre',
+  'November': 'Noviembre',
+  'December': 'Diciembre',
+
+  // ── Permissions screen ───────────────────────────────────────────────
+  'To scan and analyze lunars': 'Para escanear y analizar lunares',
+
+  // ── Reminders screen ─────────────────────────────────────────────────
+  'NEW REMINDER': 'NUEVO RECORDATORIO',
+  'UPCOMING': 'PRÓXIMOS',
+
+  // ── Privacy & Security ───────────────────────────────────────────────
+  'ACCOUNT': 'CUENTA',
+  'YOUR DATA': 'TUS DATOS',
+  'Every photo is encrypted on your device with AES-256 before being persisted. Even when cloud sync is on, the image is uploaded to a private bucket tied to your account — only you can request a download URL.':
+      'Cada foto se encripta en tu dispositivo con AES-256 antes de guardarse. Incluso cuando la sincronización en la nube está activa, la imagen se sube a un bucket privado vinculado a tu cuenta — solo tú puedes solicitar una URL de descarga.',
+  'Your name, DNI and contact details are kept on your profile only. They are never written into the scan documents or filenames — the cloud copy is anonymous.':
+      'Tu nombre, DNI y datos de contacto se mantienen solo en tu perfil. Nunca se escriben en los documentos de los escaneos ni en los nombres de archivo — la copia en la nube es anónima.',
+  "We'll email password reset instructions to ":
+      'Te enviaremos por correo las instrucciones para restablecer tu contraseña a ',
+  '. Tap the link in the email to set a new password.':
+      '. Toca el enlace del correo para establecer una nueva contraseña.',
+
+  // ── Triage detail screen ─────────────────────────────────────────────
+  'this scan': 'este escaneo',
+  'This permanently removes the photo and analysis on':
+      'Esto elimina permanentemente la foto y el análisis en',
+  'from this device and from your private cloud.':
+      'de este dispositivo y de tu nube privada.',
+  'This action cannot be undone.': 'Esta acción no se puede deshacer.',
+  'High Risk Detected': 'Riesgo alto detectado',
+  'Medium Risk Detected': 'Riesgo medio detectado',
+  'Low Risk Detected': 'Riesgo bajo detectado',
+  'High-risk patterns identified. Urgent clinical review is strongly recommended. Please consult a dermatologist.':
+      'Se identificaron patrones de alto riesgo. Se recomienda encarecidamente una revisión clínica urgente. Por favor consulta a un dermatólogo.',
+  'Atypical patterns identified. Clinical review suggested based on visual analysis markers.':
+      'Se identificaron patrones atípicos. Se sugiere revisión clínica según los marcadores del análisis visual.',
+  'No concerning patterns identified. Continue routine self-monitoring and periodic dermatological check-ups.':
+      'No se identificaron patrones preocupantes. Continúa con el autoexamen rutinario y los chequeos dermatológicos periódicos.',
+  'Not set': 'No establecido',
+  'LOCATION': 'UBICACIÓN',
+  'CAPTURED': 'CAPTURADO',
+  'Download PDF': 'Descargar PDF',
+  'Generating…': 'Generando…',
+  'Delete this scan': 'Eliminar este escaneo',
+  'Deleting…': 'Eliminando…',
+
+  // ── Camera permission recovery (scan flow) ───────────────────────────
+  'Camera permission is required to scan.':
+      'Se necesita permiso de cámara para escanear.',
+  'Camera access is blocked. Enable it from system settings to scan.':
+      'El acceso a la cámara está bloqueado. Habilítalo en la configuración del sistema para escanear.',
+  'Grant camera access': 'Conceder acceso a la cámara',
 };

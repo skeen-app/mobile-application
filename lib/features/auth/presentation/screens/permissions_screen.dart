@@ -201,7 +201,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   const SizedBox(height: 32),
                   _PermissionCard(
                     title: 'Camera'.tr,
-                    description: 'To scan and analyze lunars',
+                    description: 'To scan and analyze lunars'.tr,
                     iconPath: 'assets/images/camera_icon.svg',
                     iconBackground: const Color(0xFF381E75),
                     value: _camera,
@@ -215,7 +215,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   const SizedBox(height: 16),
                   _PermissionCard(
                     title: 'Gallery'.tr,
-                    description: 'To scan and analyze lunars',
+                    description: 'To scan and analyze lunars'.tr,
                     iconPath: 'assets/images/gallery_icon.svg',
                     iconBackground: const Color(0xFF172F5A),
                     value: _gallery,
@@ -229,7 +229,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   const SizedBox(height: 16),
                   _PermissionCard(
                     title: 'Notifications'.tr,
-                    description: 'To scan and analyze lunars',
+                    description: 'To scan and analyze lunars'.tr,
                     iconPath: 'assets/images/notifications_icon.svg',
                     iconBackground: const Color(0xFF432338),
                     value: _notifications,
@@ -242,7 +242,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                   ),
                   const Spacer(),
                   SkeenButton.primary(
-                    label: 'Continue',
+                    label: 'Continue'.tr,
                     onPressed: () => context.go('/onboarding/terms'),
                   ),
                   const SizedBox(height: 24),

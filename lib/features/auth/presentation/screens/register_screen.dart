@@ -183,7 +183,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const _RegisterOrDivider(),
                   SkeenTextField(
-                    label: 'Name',
+                    label: 'Name'.tr,
                     controller: _nameCtrl,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.givenName],
@@ -191,7 +191,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 20),
                   SkeenTextField(
-                    label: 'Last Name',
+                    label: 'Last Name'.tr,
                     controller: _lastNameCtrl,
                     textInputAction: TextInputAction.next,
                     autofillHints: const [AutofillHints.familyName],
@@ -199,7 +199,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 20),
                   SkeenTextField(
-                    label: 'DNI',
+                    label: 'DNI'.tr,
                     controller: _dniCtrl,
                     keyboardType: TextInputType.number,
                     inputFormatters: [
@@ -212,14 +212,17 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         const EdgeInsets.fromLTRB(20, 20, 20, 80),
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.info_outline,
+                      // Translate the static template and append the live
+                      // counter — keeps the translation key stable across
+                      // every keystroke.
                       message:
-                          'Your DNI must be exactly 8 digits (${_dniCtrl.text.length}/8).',
+                          '${'Your DNI must be exactly 8 digits'.tr} (${_dniCtrl.text.length}/8).',
                       ok: Validators.dni(_dniCtrl.text) == null,
                     ),
                   ),
                   const SizedBox(height: 20),
                   SkeenTextField(
-                    label: 'Email',
+                    label: 'Email'.tr,
                     controller: _emailCtrl,
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
@@ -229,7 +232,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                         const EdgeInsets.fromLTRB(20, 20, 20, 80),
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.alternate_email,
-                      message: 'Use a valid format, e.g. name@example.com.',
+                      message: 'Use a valid format, e.g. name@example.com.'.tr,
                       ok: _emailCtrl.text.isEmpty
                           ? null
                           : Validators.email(_emailCtrl.text) == null,
@@ -237,7 +240,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 20),
                   SkeenTextField(
-                    label: 'Phone Number',
+                    label: 'Phone Number'.tr,
                     controller: _phoneCtrl,
                     keyboardType: TextInputType.phone,
                     inputFormatters: [
@@ -252,20 +255,20 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     helperBuilder: (_) => _HintPanel(
                       icon: Icons.phone_outlined,
                       message:
-                          'Peruvian mobile numbers have 9 digits (${_phoneCtrl.text.length}/9).',
+                          '${'Peruvian mobile numbers have 9 digits'.tr} (${_phoneCtrl.text.length}/9).',
                       ok: Validators.phone(_phoneCtrl.text) == null,
                     ),
                   ),
                   const SizedBox(height: 20),
                   SkeenPasswordField(
-                    label: 'Password',
+                    label: 'Password'.tr,
                     controller: _passwordCtrl,
                     textInputAction: TextInputAction.next,
                     errorText: _submitted ? _passwordError : null,
                   ),
                   const SizedBox(height: 20),
                   SkeenPasswordField(
-                    label: 'Confirm your password',
+                    label: 'Confirm your password'.tr,
                     controller: _confirmCtrl,
                     textInputAction: TextInputAction.done,
                     showRulesHelper: false,
@@ -273,7 +276,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                   ),
                   const SizedBox(height: 32),
                   SkeenButton.primary(
-                    label: 'Continue',
+                    label: 'Continue'.tr,
                     onPressed: _onSubmit,
                     isLoading: isSubmitting,
                   ),
@@ -288,7 +291,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           color: AppColors.hintText,
                         ),
                         children: [
-                          const TextSpan(text: 'Already have an account? '),
+                          TextSpan(text: 'Already have an account? '.tr),
                           WidgetSpan(
                             alignment: PlaceholderAlignment.middle,
                             child: GestureDetector(

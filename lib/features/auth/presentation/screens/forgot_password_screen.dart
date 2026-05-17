@@ -123,7 +123,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                       const SizedBox(height: 28),
                       SkeenTextField(
-                        label: 'Email',
+                        label: 'Email'.tr,
                         controller: _emailCtrl,
                         keyboardType: TextInputType.emailAddress,
                         textInputAction: TextInputAction.done,
@@ -133,7 +133,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                       ),
                       const SizedBox(height: 32),
                       SkeenButton.primary(
-                        label: 'Send instructions',
+                        label: 'Send instructions'.tr,
                         isLoading: _busy,
                         onPressed: _busy ? () {} : _onSubmit,
                       ),

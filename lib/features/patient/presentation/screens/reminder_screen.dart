@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
+import '../../../../core/localization/locale_controller.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_bottom_nav.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -55,9 +56,9 @@ class _ReminderScreenState extends ConsumerState<ReminderScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            const SkeenTopAppBar(
-              title: 'Reminders',
-              subtitle: 'your skin routine',
+            SkeenTopAppBar(
+              title: 'Reminders'.tr,
+              subtitle: 'your skin routine'.tr,
               showBack: true,
             ),
             Expanded(
@@ -77,20 +78,20 @@ class _ReminderScreenState extends ConsumerState<ReminderScreen> {
                         ),
                       ),
                       const SizedBox(height: 18),
-                      const _SectionLabel(label: 'NEW REMINDER'),
+                      _SectionLabel(label: 'NEW REMINDER'.tr),
                       const SizedBox(height: 8),
                       _CreateTile(
                         icon: Icons.alarm_add_outlined,
-                        title: 'Schedule a reminder',
+                        title: 'Schedule a reminder'.tr,
                         subtitle:
-                            'Pick a type, repetition and exact time.',
+                            'Pick a type, repetition and exact time.'.tr,
                         onTap: () => _openCreateSheet(
                           context,
                           recentScans: scans,
                         ),
                       ),
                       const SizedBox(height: 18),
-                      const _SectionLabel(label: 'UPCOMING'),
+                      _SectionLabel(label: 'UPCOMING'.tr),
                       const SizedBox(height: 8),
                       if (upcoming.isEmpty)
                         const _EmptyUpcoming()

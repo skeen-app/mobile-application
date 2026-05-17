@@ -4,7 +4,12 @@
       "Bash(flutter test *)",
       "mcp__claude_ai_Figma__get_design_context",
       "Bash(flutter analyze *)",
-      "Bash(flutter build *)"
+      "Bash(flutter build *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\arian\\\\Documents\\\\skeen\\\\mobile-application\\\\lib\\\\features\\\\auth\\\\presentation\\\\screens\" -Filter \"*.dart\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(grep -n '\\\\$' \"C:\\\\Users\\\\arian\\\\Documents\\\\skeen\\\\mobile-application\\\\lib\\\\core\\\\localization\\\\translations.dart\")",
+      "Bash(flutter clean *)",
+      "Bash(flutter pub *)"
     ]
   }
 }
