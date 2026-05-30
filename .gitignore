@@ -14,6 +14,12 @@ doc/api/
 # dotenv environment variables file
 .env*
 
+# Per-developer overrides for --dart-define-from-file (env.json is the
+# committed default; env.local.json holds machine-specific values like
+# localhost / 10.0.2.2 emulator URLs and stays untracked).
+env.local.json
+env.json
+
 # Avoid committing generated Javascript files:
 *.dart.js
 # Produced by the --dump-info flag.

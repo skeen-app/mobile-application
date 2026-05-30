@@ -17,6 +17,7 @@ import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
 import '../domain/lesion_analysis.dart';
 import '../domain/ports.dart';
+import '../domain/skin_gate_exception.dart';
 import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
 import 'providers.dart';
@@ -31,12 +32,20 @@ enum DetectionPhase {
   ready,
   capturing,
   standardizing,
+  // Cascade stage-1: the skin / not-skin filter runs before the cancer
+  // classifier. Short-circuits the pipeline (no persistence, no upload)
+  // when the captured frame doesn't look like skin.
+  gating,
   analyzing,
   // The post-inference step where, with cloud sync consent + connectivity,
   // we synchronously push the freshly captured scan to the cloud before
   // showing the result. Guarantees the row survives a quick sign-out.
   uploading,
   presented,
+  // Terminal phase reached when the skin-gate rejected the frame. The
+  // screen shows the educational dialog and calls [reset] to return to
+  // [ready] once the user acknowledges.
+  notSkinRejected,
   failed,
 }
 
@@ -112,6 +121,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   DetectionController({
     required ArSessionPort session,
     required InferenceServicePort inference,
+    required SkinGateServicePort skinGate,
     required ScanCameraServicePort camera,
     required CoordinateTranslator translator,
     required DetectionResultMapper mapper,
@@ -124,6 +134,7 @@ class DetectionController extends StateNotifier<DetectionState> {
     void Function()? onScanSaved,
   })  : _session = session,
         _inference = inference,
+        _skinGate = skinGate,
         _camera = camera,
         _translator = translator,
         _mapper = mapper,
@@ -134,6 +145,7 @@ class DetectionController extends StateNotifier<DetectionState> {
 
   final ArSessionPort _session;
   final InferenceServicePort _inference;
+  final SkinGateServicePort _skinGate;
   final ScanCameraServicePort _camera;
   final CoordinateTranslator _translator;
   final DetectionResultMapper _mapper;
@@ -163,6 +175,7 @@ class DetectionController extends StateNotifier<DetectionState> {
       // camera mode in the future.
       await Future.wait([
         _inference.load(),
+        _skinGate.load(),
         _repository.initialize(),
       ]);
       _distanceSub = _session.distance.listen((d) {
@@ -273,6 +286,16 @@ class DetectionController extends StateNotifier<DetectionState> {
 
       // Compute image hash for dedup + integrity
       final hash = sha256.convert(bytes).toString();
+
+      // Phase: gating — cascade stage-1 (skin / not-skin). Runs on the
+      // already-standardized 1:1 JPEG so both stages of the cascade see
+      // the same buffer. A negative verdict short-circuits the pipeline:
+      // no classifier call, no persistence, no notifications, no upload.
+      state = state.copyWith(phase: DetectionPhase.gating);
+      final gate = await _skinGate.evaluate(bytes);
+      if (!gate.isSkin) {
+        throw NotSkinDetectedException(gate);
+      }
 
       // Phase: analyzing — run TFLite inference on isolate (non-blocking)
       state = state.copyWith(phase: DetectionPhase.analyzing);
@@ -392,6 +415,13 @@ class DetectionController extends StateNotifier<DetectionState> {
         savedAnalysisId: analysis.id,
         capturedImageBytes: bytes,
       );
+    } on NotSkinDetectedException catch (e) {
+      // Cascade stage-1 rejected the frame. Don't unlock exposure here —
+      // [reset] / [restartMapping] handle that when the user dismisses
+      // the educational dialog.
+      if (kDebugMode) debugPrint('Skin-gate rejected capture: $e');
+      if (!mounted) return;
+      state = state.copyWith(phase: DetectionPhase.notSkinRejected);
     } catch (e, st) {
       if (kDebugMode) debugPrint('Capture pipeline failed: $e\n$st');
       if (!mounted) return;
@@ -454,6 +484,7 @@ final detectionControllerProvider =
     return DetectionController(
       session: ref.watch(arSessionProvider),
       inference: ref.watch(inferenceServiceProvider),
+      skinGate: ref.watch(skinGateServiceProvider),
       camera: ref.watch(scanCameraPortProvider),
       translator: ref.watch(coordinateTranslatorProvider),
       mapper: ref.watch(detectionResultMapperProvider),

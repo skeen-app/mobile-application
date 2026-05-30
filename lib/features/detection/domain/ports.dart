@@ -5,6 +5,7 @@ import 'ar_geometry.dart';
 import 'inference_result.dart';
 import 'lesion_analysis.dart';
 import 'scan_remote.dart';
+import 'skin_gate_result.dart';
 
 /// Outbound port for the on-device TFLite classifier. Implementations live
 /// in `infrastructure/` (real `tflite_flutter` runtime, web mock, test
@@ -12,6 +13,17 @@ import 'scan_remote.dart';
 abstract class InferenceServicePort {
   Future<void> load();
   Future<InferenceResult> classify(Uint8List jpegBytes);
+  Future<void> dispose();
+}
+
+/// Outbound port for the cascade's stage-1 model — a lightweight
+/// classifier that decides whether the captured frame shows skin before
+/// the heavier cancer model runs. Lives in the same Detection bounded
+/// context because it shares the capture lifecycle (load on bootstrap,
+/// evaluate per capture, dispose with the scan screen).
+abstract class SkinGateServicePort {
+  Future<void> load();
+  Future<SkinGateResult> evaluate(Uint8List jpegBytes);
   Future<void> dispose();
 }
 

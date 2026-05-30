@@ -26,6 +26,7 @@ import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/capture_guide_overlay.dart';
 import '../widgets/floating_diagnosis_label.dart';
+import '../widgets/not_skin_detected_dialog.dart';
 import '../widgets/scan_capture_button.dart';
 import '../widgets/scene_mapping_overlay.dart';
 
@@ -396,6 +397,15 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
         .setFlash(!state.flashOn);
   }
 
+  Future<void> _showNotSkinDialog() async {
+    await NotSkinDetectedDialog.show(context);
+    if (!mounted) return;
+    // Whatever the dismiss path (CTA or back gesture), return the AR flow
+    // to the scene-mapping coaching state so the next attempt re-runs the
+    // readiness gate.
+    await _scanAgain();
+  }
+
   Future<void> _scanAgain() async {
     setState(() {
       _mappingElapsedMs = 0;
@@ -409,6 +419,15 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Skin-gate rejection → educational modal, then back to mapping. The
+    // listener runs once per transition, not on every rebuild.
+    ref.listen<DetectionState>(detectionControllerProvider, (prev, next) {
+      final wasRejected = prev?.phase == DetectionPhase.notSkinRejected;
+      final isRejected = next.phase == DetectionPhase.notSkinRejected;
+      if (isRejected && !wasRejected) {
+        _showNotSkinDialog();
+      }
+    });
     final detection = ref.watch(detectionControllerProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -535,6 +554,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
 
                 if (detection.phase == DetectionPhase.analyzing ||
                     detection.phase == DetectionPhase.standardizing ||
+                    detection.phase == DetectionPhase.gating ||
                     detection.phase == DetectionPhase.uploading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.35),
@@ -579,6 +599,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     final isBusy = detection.phase == DetectionPhase.capturing ||
         detection.phase == DetectionPhase.analyzing ||
         detection.phase == DetectionPhase.standardizing ||
+        detection.phase == DetectionPhase.gating ||
         detection.phase == DetectionPhase.uploading;
     final isMapping = detection.phase == DetectionPhase.mapping ||
         detection.phase == DetectionPhase.initializing;

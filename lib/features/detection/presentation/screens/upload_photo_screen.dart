@@ -23,6 +23,7 @@ import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/class_label.dart';
 import '../widgets/body_region_picker.dart';
+import '../widgets/not_skin_detected_dialog.dart';
 
 /// Gallery upload variant of the Detection scan flow.
 ///
@@ -132,6 +133,10 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
     final bytes = _previewBytes;
     if (bytes == null || _analyzing) return;
 
+    // Capture screen size before any async gap so we don't read from
+    // `context` after awaits (avoids use_build_context_synchronously).
+    final screenSize = MediaQuery.of(context).size;
+
     final region = _bodyRegion ??
         // ignore: use_build_context_synchronously
         await BodyRegionPicker.show(context);
@@ -144,6 +149,30 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
     });
 
     try {
+      // Cascade stage-1: skin / not-skin filter. Runs on the same
+      // center-cropped JPEG that would feed the cancer classifier, so
+      // both stages see identical inputs. A negative verdict short-
+      // circuits the pipeline — no classify call, no persistence, no
+      // notifications, no upload — and surfaces the educational dialog.
+      final skinGate = ref.read(skinGateServiceProvider);
+      await skinGate.load();
+      final gateResult = await skinGate.evaluate(bytes);
+      if (!gateResult.isSkin) {
+        if (!mounted) return;
+        setState(() => _analyzing = false);
+        await NotSkinDetectedDialog.show(context);
+        if (!mounted) return;
+        // Send the user back to pick another photo. The picker also
+        // re-renders the "Waiting for your selection…" state so the
+        // rejected preview doesn't linger.
+        setState(() {
+          _previewBytes = null;
+          _bodyRegion = null;
+        });
+        await _pickFromGallery();
+        return;
+      }
+
       final inference = ref.read(inferenceServiceProvider);
       await inference.load();
       final result = await inference.classify(bytes);
@@ -155,16 +184,15 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       await repo.initialize();
 
       final hash = sha256.convert(bytes).toString();
-      final size = MediaQuery.of(context).size;
-      final shortest = size.shortestSide;
+      final shortest = screenSize.shortestSide;
       final side = shortest * 0.33;
       final bbox = BoundingBox(
-        left: (size.width - side) / 2,
-        top: (size.height - side) / 2,
+        left: (screenSize.width - side) / 2,
+        top: (screenSize.height - side) / 2,
         width: side,
         height: side,
-        frameWidth: size.width,
-        frameHeight: size.height,
+        frameWidth: screenSize.width,
+        frameHeight: screenSize.height,
       );
       // Same sync-intent contract as the camera capture flow:
       //   cloud sync ON  → pendingUpload, attempt inline upload if online

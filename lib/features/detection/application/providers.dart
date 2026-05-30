@@ -5,6 +5,7 @@ import '../infrastructure/ar_session_service.dart';
 import '../infrastructure/scan_camera_service.dart';
 import '../infrastructure/secure_lesion_repository.dart';
 import '../infrastructure/tflite_inference_service.dart';
+import '../infrastructure/tflite_skin_gate_service.dart';
 import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
 import 'readiness_evaluator.dart';
@@ -15,6 +16,16 @@ import 'readiness_evaluator.dart';
 
 final inferenceServiceProvider = Provider<InferenceServicePort>((ref) {
   final svc = TfliteInferenceService();
+  ref.onDispose(svc.dispose);
+  return svc;
+});
+
+/// Cascade stage-1: lightweight skin / not-skin filter that runs before
+/// the cancer classifier. Kept as its own provider so the upload-photo
+/// flow can reuse the same instance without having to reach into the
+/// detection controller.
+final skinGateServiceProvider = Provider<SkinGateServicePort>((ref) {
+  final svc = TfliteSkinGateService();
   ref.onDispose(svc.dispose);
   return svc;
 });

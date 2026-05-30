@@ -119,6 +119,7 @@ flutter:
 
   assets:
     - assets/models/skeen_v2_quantized.tflite
+    - assets/models/skin_detector_v1.tflite
     - assets/images/
     - assets/images/home/
     - assets/images/logo/
