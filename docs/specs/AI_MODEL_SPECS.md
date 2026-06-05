@@ -77,31 +77,54 @@ This file documents both stages.
 ## Stage 2 — Cancer Classifier
 
 ### Model
-- **Filename:** `skeen_v2_quantized.tflite`
-- **Path:** `assets/models/skeen_v2_quantized.tflite`
-- **Core architecture:** EfficientNetB0 (fine-tuned)
-- **Format:** TensorFlow Lite (Float16 quantized)
-- **Size:** ~7 MB
+- **Filename:** `skeen_model_v2.tflite`
+- **Path:** `assets/models/skeen_model_v2.tflite`
+- **Core architecture:** EfficientNet-B1 (fine-tuned)
+- **Format:** TensorFlow Lite (fully uint8-quantized, input AND output)
+- **Size:** ~7.8 MB
 
-### I/O
-- **Input shape:** `[1, 224, 224, 3]`
-- **Color space:** RGB, values in `[0, 255]` (internal `Rescaling`
-  layer — do NOT divide by 255)
-- **Output shape:** `[1, 5]` — softmax probabilities over the 5
-  classes below.
+### I/O (verified from the tensor signature)
+- **Input shape:** `[1, 240, 240, 3]`
+- **Input dtype:** `uint8`, quant `scale=1.0 / zeroPoint=0` — feed raw
+  pixel integers in `[0, 255]`. EfficientNet's internal normalization is
+  baked into the graph; do NOT divide by 255 or pre-normalize.
+- **Output shape:** `[1, 5]` — softmax probabilities over the 5 classes.
+- **Output dtype:** `uint8`, quant `scale=0.00390625 (1/256) / zeroPoint=0`.
+  Dequantize each score with `real = (raw_uint8 - zeroPoint) * scale` to
+  recover probabilities in `[0, 1]`.
+- **Runtime note:** run on a **synchronous** `Interpreter` (not
+  `IsolateInterpreter`) — the package's isolate path deadlocks on uint8
+  tensors.
 
 ### Classes
-| Index | Slug                 | Display name              |
-|-------|----------------------|---------------------------|
-| 0     | `actinic_keratosis`  | Actinic Keratosis         |
-| 1     | `bcc`                | Basal Cell Carcinoma      |
-| 2     | `melanoma`           | Melanoma                  |
-| 3     | `nevus`              | Nevus (benign)            |
-| 4     | `scc`                | Squamous Cell Carcinoma   |
+Order is strictly alphabetical and MUST NOT be altered.
+| Index | Slug                 | Display name              | Malignant |
+|-------|----------------------|---------------------------|-----------|
+| 0     | `actinic_keratosis`  | Actinic Keratosis         | yes       |
+| 1     | `bcc`                | Basal Cell Carcinoma      | yes       |
+| 2     | `melanoma`           | Melanoma                  | yes       |
+| 3     | `nevus`              | Nevus (benign)            | no        |
+| 4     | `scc`                | Squamous Cell Carcinoma   | yes       |
 
 ### Pre-processing
-- **Resizing:** Bilinear interpolation to 224×224
-- **Normalization:** Handled inside the model (`Rescaling` layer)
+- **Resizing:** Bilinear interpolation to 240×240
+- **Normalization:** Handled inside the model — feed raw uint8 `[0, 255]`.
+
+### Decision logic — conservative three tiers
+Implemented in `TriageDecisionPolicy` → `DiagnosisResult`. Derived from the
+scores; does NOT alter the persisted `InferenceResult` / `WarningLevel`.
+- `malignant_sum` = Σ probabilities of the 4 malignant classes.
+- `nevus_p` = probability of nevus (the only benign class).
+- `top_mal` / `top_mal_p` = strongest malignant class and its probability.
+
+Thresholds: `TH_BENIGN = 0.70`, `TH_MALIGNANT_SUM = 0.55`, `TH_SPECIFIC = 0.55`.
+
+Rules in order:
+1. `nevus_p >= 0.70` → **benign**.
+2. `malignant_sum >= 0.55` AND `top_mal_p >= 0.55` → **malignant, specific**
+   (`lesionType = top_mal`).
+3. `malignant_sum >= 0.55` (no class reached 0.55) → **malignant, unspecified**.
+4. otherwise → **inconclusive**.
 
 ### Inference goal
 - Prioritize **recall** for SCC (current: 0.77) and Melanoma.

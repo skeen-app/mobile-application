@@ -27,6 +27,42 @@ abstract class SkinGateServicePort {
   Future<void> dispose();
 }
 
+/// Outbound port for the guide-box crop step (FASE 2 experiment). Crops the
+/// captured JPEG to the centered region the user framed, BEFORE it reaches
+/// the cascade, so both models see a tighter, more dermatoscopic input.
+///
+/// Flag-gated via `capture_crop_config.dart`: when cropping is disabled the
+/// implementation returns the bytes untouched ([CropOutcome.applied] ==
+/// false). [previewSize] is only consulted by the `coverGeometry` strategy.
+abstract class CaptureCropperPort {
+  Future<CropOutcome> crop(Uint8List jpegBytes, {required Size previewSize});
+}
+
+/// Result of a [CaptureCropperPort.crop] call. Besides the (possibly
+/// unchanged) bytes it carries the per-axis fraction of the original image
+/// the crop spans, so the caller can remap the AR centroid — computed in the
+/// cropped image's coordinate space — back to full-frame coordinates.
+class CropOutcome {
+  const CropOutcome({
+    required this.bytes,
+    required this.fracX,
+    required this.fracY,
+    required this.applied,
+  });
+
+  final Uint8List bytes;
+
+  /// Cropped width / original width (1.0 when no crop was applied).
+  final double fracX;
+
+  /// Cropped height / original height (1.0 when no crop was applied).
+  final double fracY;
+
+  /// Whether a crop was actually performed (false when the flag is off or
+  /// decoding failed — bytes are returned verbatim in that case).
+  final bool applied;
+}
+
 /// Outbound port for the native AR session (ARKit + LiDAR on iOS,
 /// ARCore + Depth on Android). The Dart side never speaks to platform
 /// channels directly.

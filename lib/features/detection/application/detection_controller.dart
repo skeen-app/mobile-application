@@ -122,6 +122,7 @@ class DetectionController extends StateNotifier<DetectionState> {
     required ArSessionPort session,
     required InferenceServicePort inference,
     required SkinGateServicePort skinGate,
+    required CaptureCropperPort cropper,
     required ScanCameraServicePort camera,
     required CoordinateTranslator translator,
     required DetectionResultMapper mapper,
@@ -135,6 +136,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   })  : _session = session,
         _inference = inference,
         _skinGate = skinGate,
+        _cropper = cropper,
         _camera = camera,
         _translator = translator,
         _mapper = mapper,
@@ -146,6 +148,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   final ArSessionPort _session;
   final InferenceServicePort _inference;
   final SkinGateServicePort _skinGate;
+  final CaptureCropperPort _cropper;
   final ScanCameraServicePort _camera;
   final CoordinateTranslator _translator;
   final DetectionResultMapper _mapper;
@@ -284,22 +287,49 @@ class DetectionController extends StateNotifier<DetectionState> {
         return;
       }
 
-      // Compute image hash for dedup + integrity
+      // Compute image hash for dedup + integrity. Hashes the FULL capture —
+      // the crop below only narrows what the models see, not what we persist
+      // or display.
       final hash = sha256.convert(bytes).toString();
 
+      // ── FASE 2: guide-box crop (flag-gated) ───────────────────────────
+      // Crop the centered guide region ONCE, here, and feed that single
+      // buffer to BOTH cascade stages so they see the same (tighter) input.
+      // Persistence, PDF and the displayed photo keep the full `bytes`.
+      // When the flag is off, [CropOutcome.applied] is false and `modelBytes`
+      // == `bytes` (legacy behavior, byte-for-byte).
+      final crop = await _cropper.crop(bytes, previewSize: previewSize);
+      final modelBytes = crop.bytes;
+
       // Phase: gating — cascade stage-1 (skin / not-skin). Runs on the
-      // already-standardized 1:1 JPEG so both stages of the cascade see
-      // the same buffer. A negative verdict short-circuits the pipeline:
-      // no classifier call, no persistence, no notifications, no upload.
+      // (possibly cropped) JPEG so both stages of the cascade see the same
+      // buffer. A negative verdict short-circuits the pipeline: no
+      // classifier call, no persistence, no notifications, no upload.
       state = state.copyWith(phase: DetectionPhase.gating);
-      final gate = await _skinGate.evaluate(bytes);
+      final gate = await _skinGate.evaluate(modelBytes);
       if (!gate.isSkin) {
         throw NotSkinDetectedException(gate);
       }
 
       // Phase: analyzing — run TFLite inference on isolate (non-blocking)
       state = state.copyWith(phase: DetectionPhase.analyzing);
-      final result = await _inference.classify(bytes);
+      var result = await _inference.classify(modelBytes);
+
+      // The classifier computes the lesion centroid in the cropped image's
+      // coordinate space. Remap it back to FULL-frame normalized coords so
+      // the AR anchor / floating-label fallback still lands on the lesion.
+      // For a centered crop spanning `frac` of each axis:
+      //   full = 0.5 + (cropNorm - 0.5) * frac
+      if (crop.applied && result.lesionCentroid != null) {
+        final c = result.lesionCentroid!;
+        result = InferenceResult(
+          scores: result.scores,
+          lesionCentroid: Offset(
+            (0.5 + (c.dx - 0.5) * crop.fracX).clamp(0.0, 1.0),
+            (0.5 + (c.dy - 0.5) * crop.fracY).clamp(0.0, 1.0),
+          ),
+        );
+      }
 
       if (kDebugMode) {
         debugPrint(
@@ -485,6 +515,7 @@ final detectionControllerProvider =
       session: ref.watch(arSessionProvider),
       inference: ref.watch(inferenceServiceProvider),
       skinGate: ref.watch(skinGateServiceProvider),
+      cropper: ref.watch(captureCropperProvider),
       camera: ref.watch(scanCameraPortProvider),
       translator: ref.watch(coordinateTranslatorProvider),
       mapper: ref.watch(detectionResultMapperProvider),

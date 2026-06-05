@@ -22,6 +22,7 @@ import '../../application/providers.dart';
 import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/class_label.dart';
+import '../../domain/inference_result.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/not_skin_detected_dialog.dart';
 
@@ -149,14 +150,27 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
     });
 
     try {
+      // ── FASE 2: guide-box crop (flag-gated) ───────────────────────────
+      // Mirror the camera flow: narrow the model input to the centered
+      // region. The gallery has NO on-screen guide box and the lesion may
+      // sit anywhere, so we force the surface-agnostic centered-fraction
+      // crop by passing `Size.zero` — that makes `coverGeometry` (which
+      // needs a real cover-preview) degrade to the same `kGuideCropRatio`
+      // fraction instead of deriving a meaningless ratio from screen size.
+      // Persistence + the displayed photo keep the full `bytes`.
+      final crop = await ref
+          .read(captureCropperProvider)
+          .crop(bytes, previewSize: Size.zero);
+      final modelBytes = crop.bytes;
+
       // Cascade stage-1: skin / not-skin filter. Runs on the same
-      // center-cropped JPEG that would feed the cancer classifier, so
+      // (possibly cropped) JPEG that feeds the cancer classifier, so
       // both stages see identical inputs. A negative verdict short-
       // circuits the pipeline — no classify call, no persistence, no
       // notifications, no upload — and surfaces the educational dialog.
       final skinGate = ref.read(skinGateServiceProvider);
       await skinGate.load();
-      final gateResult = await skinGate.evaluate(bytes);
+      final gateResult = await skinGate.evaluate(modelBytes);
       if (!gateResult.isSkin) {
         if (!mounted) return;
         setState(() => _analyzing = false);
@@ -175,7 +189,22 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
 
       final inference = ref.read(inferenceServiceProvider);
       await inference.load();
-      final result = await inference.classify(bytes);
+      var result = await inference.classify(modelBytes);
+
+      // Remap the lesion centroid from the cropped image's space back to
+      // full-frame normalized coords (full = 0.5 + (cropNorm - 0.5) * frac)
+      // so the persisted InferenceResult stays consistent with the stored
+      // full photo.
+      if (crop.applied && result.lesionCentroid != null) {
+        final c = result.lesionCentroid!;
+        result = InferenceResult(
+          scores: result.scores,
+          lesionCentroid: Offset(
+            (0.5 + (c.dx - 0.5) * crop.fracX).clamp(0.0, 1.0),
+            (0.5 + (c.dy - 0.5) * crop.fracY).clamp(0.0, 1.0),
+          ),
+        );
+      }
 
       final user = ref.read(authControllerProvider).user;
       final patientId = user?.id ?? 'anonymous';

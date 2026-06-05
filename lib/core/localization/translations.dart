@@ -389,6 +389,30 @@ const Map<String, String> enTranslations = {
       'Capture your first scan and it will appear here.',
   'Could not load your body map': 'Could not load your body map',
   'See full analysis': 'See full analysis',
+
+  // ── Triage decision (conservative three-tier logic) ──────────────
+  'triage.benign.title': 'Benign findings',
+  'triage.benign.message':
+      'No features of malignancy. Findings are compatible with a benign '
+          'lesion. If you notice any change, consult a specialist.',
+  'triage.malignantSpecific.title': 'Risk features detected',
+  'triage.malignantSpecific.message':
+      'Features compatible with {type}. Evaluation by a dermatologist is '
+          'recommended.',
+  'triage.malignantUnspecified.title': 'Risk features detected',
+  'triage.malignantUnspecified.message':
+      'Lesion with risk features, type undetermined. Evaluation by a '
+          'dermatologist is recommended.',
+  'triage.inconclusive.title': 'Inconclusive result',
+  'triage.inconclusive.message':
+      'Inconclusive result. Evaluation by a specialist is recommended for '
+          'an accurate diagnosis.',
+  // Lesion type display names (used for the {type} placeholder).
+  'Actinic Keratosis': 'Actinic Keratosis',
+  'Basal Cell Carcinoma': 'Basal Cell Carcinoma',
+  'Melanoma': 'Melanoma',
+  'Benign Nevus': 'Benign Nevus',
+  'Squamous Cell Carcinoma': 'Squamous Cell Carcinoma',
 };
 
 const Map<String, String> esTranslations = {
@@ -783,4 +807,28 @@ const Map<String, String> esTranslations = {
       'Captura tu primer escaneo y aparecerá aquí.',
   'Could not load your body map': 'No se pudo cargar tu mapa corporal',
   'See full analysis': 'Ver análisis completo',
+
+  // ── Triage decision (conservative three-tier logic) ──────────────
+  'triage.benign.title': 'Hallazgos benignos',
+  'triage.benign.message':
+      'Sin características de malignidad. Hallazgos compatibles con lesión '
+          'benigna. Ante cualquier cambio, consulte a un especialista.',
+  'triage.malignantSpecific.title': 'Características de riesgo',
+  'triage.malignantSpecific.message':
+      'Características compatibles con {type}. Se recomienda evaluación por '
+          'un dermatólogo.',
+  'triage.malignantUnspecified.title': 'Características de riesgo',
+  'triage.malignantUnspecified.message':
+      'Lesión con características de riesgo, tipo no determinado. Se '
+          'recomienda evaluación por un dermatólogo.',
+  'triage.inconclusive.title': 'Resultado no concluyente',
+  'triage.inconclusive.message':
+      'Resultado no concluyente. Se recomienda evaluación por un '
+          'especialista para un diagnóstico preciso.',
+  // Lesion type display names (used for the {type} placeholder).
+  'Actinic Keratosis': 'Queratosis actínica',
+  'Basal Cell Carcinoma': 'Carcinoma basocelular',
+  'Melanoma': 'Melanoma',
+  'Benign Nevus': 'Nevo benigno',
+  'Squamous Cell Carcinoma': 'Carcinoma escamocelular',
 };

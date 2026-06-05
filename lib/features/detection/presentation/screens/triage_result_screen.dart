@@ -22,7 +22,7 @@ import '../../../reminders/application/reminders_controller.dart';
 import '../../application/pdf_report_service.dart';
 import '../../application/providers.dart';
 import '../../application/sync_orchestrator.dart';
-import '../../domain/class_label.dart';
+import '../../domain/diagnosis_result.dart';
 import '../../domain/inference_result.dart';
 import '../../domain/lesion_analysis.dart';
 import '../widgets/confidence_bar.dart';
@@ -329,9 +329,13 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
   }
 
   Widget _buildRiskCard(InferenceResult result, LesionAnalysis analysis) {
-    final riskColor = _riskColor(result.warningLevel);
-    final riskTitle = _riskTitle(result.warningLevel);
-    final riskDesc = _riskDescription(result);
+    // Conservative three-tier verdict derived from the raw scores. Does not
+    // alter the persisted InferenceResult / WarningLevel (those still drive
+    // the AR label, history rows, PDF and notifications).
+    final diagnosis = ref.read(triageDecisionPolicyProvider).evaluate(result);
+    final riskColor = _riskColor(diagnosis.category);
+    final riskTitle = diagnosis.titleKey.tr;
+    final riskDesc = _riskDescription(diagnosis);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 21),
@@ -566,43 +570,31 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     );
   }
 
-  Color _riskColor(WarningLevel level) {
-    switch (level) {
-      case WarningLevel.alert:
+  Color _riskColor(TriageCategory category) {
+    switch (category) {
+      case TriageCategory.malignantSpecific:
         return AppColors.fucsia;
-      case WarningLevel.caution:
+      case TriageCategory.malignantUnspecified:
+      case TriageCategory.inconclusive:
         return AppColors.naranja;
-      case WarningLevel.reassuring:
+      case TriageCategory.benign:
         return AppColors.turquesa;
+      case TriageCategory.notSkin:
+        // Not reachable on this screen (the skin gate short-circuits before
+        // a result is ever persisted), but the switch must be exhaustive.
+        return AppColors.naranja;
     }
   }
 
-  String _riskTitle(WarningLevel level) {
-    switch (level) {
-      case WarningLevel.alert:
-        return 'High Risk Detected'.tr;
-      case WarningLevel.caution:
-        return 'Medium Risk Detected'.tr;
-      case WarningLevel.reassuring:
-        return 'Low Risk Detected'.tr;
+  /// Resolves the localized message and substitutes the `{type}` placeholder
+  /// with the localized lesion name for the specific-malignant tier.
+  String _riskDescription(DiagnosisResult diagnosis) {
+    var message = diagnosis.messageKey.tr;
+    final type = diagnosis.lesionType;
+    if (type != null) {
+      message = message.replaceAll('{type}', type.display.tr);
     }
-  }
-
-  String _riskDescription(InferenceResult result) {
-    switch (result.warningLevel) {
-      case WarningLevel.alert:
-        return ('High-risk patterns identified. Urgent clinical review '
-                'is strongly recommended. Please consult a dermatologist.')
-            .tr;
-      case WarningLevel.caution:
-        return ('Atypical patterns identified. Clinical review suggested '
-                'based on visual analysis markers.')
-            .tr;
-      case WarningLevel.reassuring:
-        return ('No concerning patterns identified. Continue routine '
-                'self-monitoring and periodic dermatological check-ups.')
-            .tr;
-    }
+    return message;
   }
 }
 

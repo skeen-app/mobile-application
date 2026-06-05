@@ -1,4 +1,4 @@
-/// The five lesion classes emitted by `skeen_v2_quantized.tflite`.
+/// The five lesion classes emitted by `skeen_model_v2.tflite`.
 ///
 /// Order MUST match the model's output index map (see AI_MODEL_SPECS.md):
 ///   0 actinic_keratosis · 1 bcc · 2 melanoma · 3 nevus · 4 scc
@@ -21,6 +21,10 @@ enum ClassLabel {
   /// is malignant or pre-malignant and must be surfaced with elevated visual
   /// weight regardless of confidence (see AI_MODEL_SPECS.md priority rule).
   bool get isBenign => this == ClassLabel.nevus;
+
+  /// The four classes that count toward the cascade's `malignant_sum`:
+  /// {actinic_keratosis, bcc, melanoma, scc}. Complement of [isBenign].
+  bool get isMalignant => this != ClassLabel.nevus;
 
   /// Two of the five classes drive the project's recall target (SCC 0.77 +
   /// Melanoma). They are the highest-priority alerts in the UI palette.

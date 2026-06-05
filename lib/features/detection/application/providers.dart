@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/ports.dart';
+import '../domain/triage_decision_policy.dart';
 import '../infrastructure/ar_session_service.dart';
+import '../infrastructure/capture_cropper.dart';
 import '../infrastructure/scan_camera_service.dart';
 import '../infrastructure/secure_lesion_repository.dart';
 import '../infrastructure/tflite_inference_service.dart';
@@ -28,6 +30,20 @@ final skinGateServiceProvider = Provider<SkinGateServicePort>((ref) {
   final svc = TfliteSkinGateService();
   ref.onDispose(svc.dispose);
   return svc;
+});
+
+/// Conservative three-tier triage policy. Pure domain service; derives a
+/// [DiagnosisResult] from the classifier scores without touching persistence
+/// or the [WarningLevel] palette.
+final triageDecisionPolicyProvider = Provider<TriageDecisionPolicy>((ref) {
+  return const TriageDecisionPolicy();
+});
+
+/// Guide-box cropper (FASE 2). Flag-gated in `capture_crop_config.dart`;
+/// crops the captured frame to the centered guide region before the cascade
+/// so both models see a tighter, more dermatoscopic input.
+final captureCropperProvider = Provider<CaptureCropperPort>((ref) {
+  return const ImageCaptureCropper();
 });
 
 final arSessionProvider = Provider<ArSessionPort>((ref) {

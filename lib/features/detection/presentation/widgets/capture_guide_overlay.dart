@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show HapticFeedback;
 
 import '../../../../core/theme/app_colors.dart';
 import '../../domain/ar_geometry.dart';
+import '../../domain/capture_crop_config.dart';
 import '../../domain/capture_quality.dart';
 
 /// Minimal capture-time overlay that replaces the old red distance ring +
@@ -58,6 +59,28 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
     _previousReady = isReady;
   }
 
+  /// Side of the visual guide square. Keeps the box coupled to the region
+  /// the cropper actually analyzes so the UX stays honest:
+  ///   • crop off            → historical fixed [kGuideBoxLogicalPx] (220).
+  ///   • centeredFraction    → [kGuideCropRatio] of the preview's shorter
+  ///                           side (the captured square ≈ fills that side),
+  ///                           so tuning the ratio moves the box too.
+  ///   • coverGeometry       → fixed [kGuideBoxLogicalPx]; the cropper
+  ///                           derives its ratio FROM this box, so the box is
+  ///                           the source of truth and stays put.
+  double _resolveBoxSide(BoxConstraints constraints) {
+    final shortest = constraints.biggest.shortestSide;
+    if (!kGuideCropEnabled) return kGuideBoxLogicalPx;
+    switch (kGuideCropStrategy) {
+      case CropStrategy.centeredFraction:
+        final side = shortest * kGuideCropRatio;
+        // Guard against absurd sizes on tiny/huge previews.
+        return side.clamp(120.0, shortest);
+      case CropStrategy.coverGeometry:
+        return kGuideBoxLogicalPx;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final ready = widget.readiness.isReady;
@@ -66,13 +89,19 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
       fit: StackFit.expand,
       children: [
         // ── Center frame ─────────────────────────────────────────────
+        // The box size mirrors the region actually fed to the models so
+        // "what you frame" == "what gets analyzed". When the crop flag is
+        // off it stays at the historical fixed size (unchanged UX, for A/B).
         IgnorePointer(
-          child: Center(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final boxSide = _resolveBoxSide(constraints);
+              return Center(
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOut,
-              width: 220,
-              height: 220,
+              width: boxSide,
+              height: boxSide,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: ready
@@ -96,6 +125,8 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
                 ),
               ),
             ),
+              );
+            },
           ),
         ),
 

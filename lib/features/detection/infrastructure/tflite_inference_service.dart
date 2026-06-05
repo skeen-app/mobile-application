@@ -15,64 +15,105 @@ class PreprocessResult {
   final Offset? centroid;
 }
 
-/// Real implementation of [InferenceServicePort] backed by `tflite_flutter`
-/// running on an [IsolateInterpreter]. Inference is offloaded to a worker
-/// isolate so the AR view can keep rendering at 60 fps while the model
-/// classifies (single-shot, on capture).
+/// Real implementation of [InferenceServicePort] backed by `tflite_flutter`.
 ///
-/// Pre-processing matches AI_MODEL_SPECS.md: bilinear 224×224, RGB,
-/// `Float32List` shape `[1, 224, 224, 3]` with **values in [0, 255]**
-/// (the model has an internal `Rescaling` layer — we MUST NOT divide).
+/// **Model:** `skeen_model_v2.tflite` — EfficientNet-B1, 5 lesion classes,
+/// fully uint8-quantized (input AND output) per the training export
+/// (`inference_input_type=tf.uint8`). Verified tensor signature:
+///   * input  `[1, 240, 240, 3]` uint8, quant scale 1.0 / zeroPoint 0
+///     → feed **raw `[0, 255]` RGB**. EfficientNet's internal normalization
+///       layer is baked into the graph; we MUST NOT divide or rescale.
+///   * output `[1, 5]` uint8, quant scale `0.00390625` (1/256) / zeroPoint 0
+///     → dequantize each score with `real = (raw - zeroPoint) * scale` to
+///       recover the softmax probabilities in `[0, 1]`.
+///
+/// **Why a synchronous [Interpreter] instead of [IsolateInterpreter]?**
+/// Same reason as [TfliteSkinGateService]: `tflite_flutter`'s isolate path
+/// deadlocks silently on uint8 tensors. Inference is single-shot on capture
+/// and the UI is already gated behind the "analyzing" overlay, so blocking
+/// the main isolate for the ~10–20 ms quantized run is acceptable. The slow
+/// step (JPEG decode + resize, ~200 ms) stays on a worker isolate via
+/// [compute].
+///
+/// See `docs/specs/AI_MODEL_SPECS.md` for the full spec.
 class TfliteInferenceService implements InferenceServicePort {
   TfliteInferenceService({
-    this.modelAsset = 'assets/models/skeen_v2_quantized.tflite',
+    this.modelAsset = 'assets/models/skeen_model_v2.tflite',
   });
 
   final String modelAsset;
 
-  IsolateInterpreter? _isolate;
   Interpreter? _interpreter;
+
+  // Output dequantization parameters, populated by [load]. The model emits
+  // uint8 softmax scores mapped back to real probabilities via
+  // `(raw - zeroPoint) * scale`. Cached so we don't query the tensor on
+  // every inference.
+  double _outputScale = 1.0;
+  int _outputZeroPoint = 0;
 
   static const int _numClasses = 5;
 
   @override
   Future<void> load() async {
-    if (_isolate != null) return;
+    if (_interpreter != null) return;
     final options = InterpreterOptions()..threads = 2;
     _interpreter = await Interpreter.fromAsset(modelAsset, options: options);
-    _isolate = await IsolateInterpreter.create(address: _interpreter!.address);
-    if (kDebugMode) debugPrint('TFLite model loaded: $modelAsset');
+
+    final outputTensor = _interpreter!.getOutputTensors().first;
+    _outputScale = outputTensor.params.scale;
+    _outputZeroPoint = outputTensor.params.zeroPoint;
+
+    if (kDebugMode) {
+      final inputs = _interpreter!.getInputTensors();
+      final outputs = _interpreter!.getOutputTensors();
+      debugPrint(
+        'TFLite classifier loaded: $modelAsset\n'
+        '  input[0]:  shape=${inputs.first.shape}, type=${inputs.first.type}, '
+        'scale=${inputs.first.params.scale}, zeroPoint=${inputs.first.params.zeroPoint}\n'
+        '  output[0]: shape=${outputs.first.shape}, type=${outputs.first.type}, '
+        'scale=$_outputScale, zeroPoint=$_outputZeroPoint',
+      );
+    }
   }
 
   @override
   Future<InferenceResult> classify(Uint8List jpegBytes) async {
-    final isolate = _isolate;
-    if (isolate == null) {
+    final interpreter = _interpreter;
+    if (interpreter == null) {
       throw StateError('InferenceService.load() must be called before classify');
     }
 
     final sw = Stopwatch()..start();
 
-    // Decode + resize + centroid calculation off the main isolate
+    // Decode + resize + centroid calculation off the main isolate.
     final preprocessResult = await compute(_preprocess, jpegBytes);
     final preprocessMs = sw.elapsedMilliseconds;
 
-    // Allocate the output buffer in the shape the interpreter expects.
-    final output = List.filled(_numClasses, 0.0)
-        .reshape<double>([1, _numClasses]);
+    // Output buffer: uint8 of shape [1, 5]. `List.filled(...).reshape<int>`
+    // yields the `List<List<int>>` that `Tensor.copyTo` writes uint8 outputs
+    // into.
+    final output = List.filled(_numClasses, 0).reshape<int>([1, _numClasses]);
 
-    await isolate.run(preprocessResult.tensor, output);
+    // Synchronous run on the main isolate — fast for this quantized model.
+    interpreter.run(preprocessResult.tensor, output);
     final totalMs = sw.elapsedMilliseconds;
     sw.stop();
+
+    // Dequantize uint8 → real softmax probabilities in [0, 1].
+    final raw = (output[0] as List).cast<int>();
+    final scores = raw
+        .map((v) => (v - _outputZeroPoint) * _outputScale)
+        .toList(growable: false);
 
     if (kDebugMode) {
       debugPrint(
         'TFLite inference: preprocess=${preprocessMs}ms, '
-        'total=${totalMs}ms (inference=${totalMs - preprocessMs}ms)',
+        'total=${totalMs}ms (inference=${totalMs - preprocessMs}ms), '
+        'raw=$raw, scores=${scores.map((s) => s.toStringAsFixed(3)).toList()}',
       );
     }
 
-    final scores = (output[0] as List).cast<double>();
     return InferenceResult(
       scores: scores,
       lesionCentroid: preprocessResult.centroid,
@@ -81,9 +122,7 @@ class TfliteInferenceService implements InferenceServicePort {
 
   @override
   Future<void> dispose() async {
-    await _isolate?.close();
     _interpreter?.close();
-    _isolate = null;
     _interpreter = null;
   }
 }
@@ -91,9 +130,11 @@ class TfliteInferenceService implements InferenceServicePort {
 /// Top-level so it can run in a worker isolate via `compute`.
 /// Performs 3 tasks:
 /// 1. Decodes JPEG.
-/// 2. Extracts a 300x300 ROI (Target Ring area), applies inverse thresholding, 
+/// 2. Extracts a 300x300 ROI (Target Ring area), applies inverse thresholding,
 ///    and calculates the Center of Mass (centroid) for AR anchoring.
-/// 3. Resizes to 224x224 and produces the Float32List tensor for TFLite.
+/// 3. Resizes to 240x240 and produces the **uint8** `[1, 240, 240, 3]` tensor
+///    with raw `[0, 255]` RGB values (no normalization — the model's internal
+///    rescaling handles it).
 PreprocessResult _preprocess(Uint8List jpegBytes) {
   final decoded = img.decodeImage(jpegBytes);
   if (decoded == null) {
@@ -167,24 +208,29 @@ PreprocessResult _preprocess(Uint8List jpegBytes) {
   // ── 2. Resize and Tensor Prep ─────────────────────────────────
   final resized = img.copyResize(
     decoded,
-    width: 224,
-    height: 224,
+    width: _kInputSize,
+    height: _kInputSize,
     interpolation: img.Interpolation.linear,
   );
 
-  final input = Float32List(1 * 224 * 224 * 3);
+  // uint8 tensor, raw [0, 255] RGB — NO normalization.
+  final input = Uint8List(1 * _kInputSize * _kInputSize * 3);
   var i = 0;
-  for (var y = 0; y < 224; y++) {
-    for (var x = 0; x < 224; x++) {
+  for (var y = 0; y < _kInputSize; y++) {
+    for (var x = 0; x < _kInputSize; x++) {
       final p = resized.getPixel(x, y);
-      input[i++] = p.r.toDouble();
-      input[i++] = p.g.toDouble();
-      input[i++] = p.b.toDouble();
+      input[i++] = p.r.toInt();
+      input[i++] = p.g.toInt();
+      input[i++] = p.b.toInt();
     }
   }
-  
+
   return PreprocessResult(
-    tensor: input.reshape([1, 224, 224, 3]),
+    tensor: input.reshape([1, _kInputSize, _kInputSize, 3]),
     centroid: centroid,
   );
 }
+
+/// Model input edge length. Mirrors [TfliteInferenceService._inputSize] but
+/// lives at top level so the isolate entry point [_preprocess] can read it.
+const int _kInputSize = 240;
