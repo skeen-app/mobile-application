@@ -178,12 +178,19 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     final region = await BodyRegionPicker.show(context);
     if (!mounted) return;
     if (region != null) {
-      await ref
-          .read(lesionRepositoryProvider)
-          .updateBodyRegion(state.savedAnalysisId!, region);
+      final repo = ref.read(lesionRepositoryProvider);
+      await repo.updateBodyRegion(state.savedAnalysisId!, region);
       ref.invalidate(scanHistoryProvider);
       ref.invalidate(lesionSummariesProvider);
-      ref.read(syncOrchestratorProvider).syncNow(reason: 'region-picked');
+      // The capture flow already uploaded this row to the cloud BEFORE the
+      // region was picked, so the picked region must be patched up. Push it
+      // through uploadOne (not the debounced syncNow): uploadOne skips the
+      // 5s debounce + running-lock, so the region can't be silently dropped
+      // — which is what made tagged scans read back at the chest default.
+      final tagged = await repo.findById(state.savedAnalysisId!);
+      if (tagged != null) {
+        ref.read(syncOrchestratorProvider).uploadOne(tagged);
+      }
     }
     if (!mounted) return;
     ref.read(tutorialControllerProvider.notifier).advanceToReport();

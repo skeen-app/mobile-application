@@ -125,10 +125,13 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
       }
       return;
     }
-    // First-time Google users complete DNI + phone before /home; existing
-    // returning users skip straight to /home.
+    // First-time Google users complete DNI + phone, then accept the Terms
+    // & Conditions before /home; existing returning users skip straight to
+    // /home.
     if (outcome.needsProfileCompletion) {
       context.go('/onboarding/complete-profile');
+    } else if (outcome.isNewUser) {
+      context.go('/onboarding/terms');
     } else {
       context.go('/home');
     }

@@ -50,11 +50,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _maybeLaunchTutorial() async {
-    // Only trigger if the registration funnel passed the flag.
     final extra = GoRouterState.of(context).extra;
-    final shouldShow =
-        extra is Map<String, dynamic> && extra['showTutorial'] == true;
-    if (shouldShow) {
+    final map = extra is Map<String, dynamic> ? extra : const {};
+    if (map['forceTutorial'] == true) {
+      // Replay requested from Profile — bypass the completed flag.
+      ref.read(tutorialControllerProvider.notifier).restart();
+    } else if (map['showTutorial'] == true) {
+      // Post-registration funnel — only shows if not already completed.
       ref.read(tutorialControllerProvider.notifier).start();
     }
   }

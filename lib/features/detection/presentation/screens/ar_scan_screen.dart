@@ -362,12 +362,19 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     if (region != null) {
       // Persist the freshly picked region on the already-saved scan +
       // re-flip pending_upload so the orchestrator re-syncs.
-      await ref
-          .read(lesionRepositoryProvider)
-          .updateBodyRegion(state.savedAnalysisId!, region);
+      final repo = ref.read(lesionRepositoryProvider);
+      await repo.updateBodyRegion(state.savedAnalysisId!, region);
       ref.invalidate(scanHistoryProvider);
       ref.invalidate(lesionSummariesProvider);
-      ref.read(syncOrchestratorProvider).syncNow(reason: 'region-picked');
+      // Patch the region straight onto the cloud doc via uploadOne — the
+      // capture flow already uploaded this row with no region, and the
+      // debounced syncNow could silently drop the patch (5s window), making
+      // the scan read back at the chest default. uploadOne bypasses both
+      // the debounce and the running-lock.
+      final tagged = await repo.findById(state.savedAnalysisId!);
+      if (tagged != null) {
+        ref.read(syncOrchestratorProvider).uploadOne(tagged);
+      }
     }
     if (!mounted) return;
     ref.read(tutorialControllerProvider.notifier).advanceToReport();

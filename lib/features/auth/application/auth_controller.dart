@@ -72,6 +72,20 @@ class AuthController extends StateNotifier<AuthState> {
     AppLogger.info('Hydrating auth state from storage', tag: 'AuthController');
     final token = _storage.readToken();
     final user = _storage.readUser();
+    // A token WITHOUT a user is never a valid session — every real login
+    // (email, register, Google) persists both together. It only happens
+    // when an orphaned FirebaseAuth session was promoted into a stored
+    // token (the pre-fix refreshSession bug). Wipe it so the device lands
+    // on onboarding instead of an authenticated-but-userless /home.
+    if (token != null && user == null) {
+      AppLogger.warning(
+        'Discarding orphaned session (token without user)',
+        tag: 'AuthController',
+      );
+      Future.microtask(_storage.clear);
+      state = const AuthState.idle();
+      return;
+    }
     if (token != null) {
       AppLogger.info('Hydrated successfully for user: ${user?.email}', tag: 'AuthController');
       state = AuthState(
@@ -105,6 +119,21 @@ class AuthController extends StateNotifier<AuthState> {
   /// Safe to spam — the SDK throttles internally and the call is
   /// network-cheap.
   Future<bool> refreshSession() async {
+    // Only refresh an ALREADY-established app session. A dangling local
+    // FirebaseAuth user — e.g. left behind when a Google sign-in succeeded
+    // on-device (signInWithCredential) but its backend token exchange
+    // failed (clock skew, 401, network) — must NEVER be promoted into a
+    // persisted token. Otherwise the next cold start hydrates an
+    // "authenticated" state with a null user and walks the device straight
+    // into /home without a real account.
+    if (state.status != AuthStatus.authenticated ||
+        _storage.readToken() == null) {
+      AppLogger.info(
+        'refreshSession: no active app session — skipping',
+        tag: 'AuthController',
+      );
+      return false;
+    }
     final currentUser = fb_auth.FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       AppLogger.info(
@@ -323,17 +352,35 @@ class AuthController extends StateNotifier<AuthState> {
     } on AuthFailure catch (failure) {
       AppLogger.warning('Google sign-in failed: $failure',
           tag: 'AuthController');
+      // The on-device Firebase/Google session may have been established
+      // before the backend exchange failed — tear it down so it can't be
+      // promoted into an orphaned, userless session on the next resume.
+      await _clearLocalFederatedSession();
       state = state.copyWith(status: AuthStatus.failure, failure: failure);
       return FederatedSignInOutcome.cancelled;
     } catch (e, stack) {
       AppLogger.error('Google sign-in crashed',
           tag: 'AuthController', error: e, stackTrace: stack);
+      await _clearLocalFederatedSession();
       state = state.copyWith(
         status: AuthStatus.failure,
         failure: const NetworkFailure(),
       );
       return FederatedSignInOutcome.cancelled;
     }
+  }
+
+  /// Best-effort teardown of the on-device federated session. Used after a
+  /// failed Google sign-in so a half-completed login (Firebase signed in
+  /// locally, backend exchange failed) doesn't leave a dangling
+  /// `FirebaseAuth.currentUser` that [refreshSession] could later persist.
+  Future<void> _clearLocalFederatedSession() async {
+    try {
+      await GoogleSignIn().signOut();
+    } catch (_) {}
+    try {
+      await fb_auth.FirebaseAuth.instance.signOut();
+    } catch (_) {}
   }
 
   /// Fills DNI + phone for a profile created by federated sign-in. After

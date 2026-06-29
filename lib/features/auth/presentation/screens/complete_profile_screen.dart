@@ -67,7 +67,11 @@ class _CompleteProfileScreenState
             phone: _phoneCtrl.text.trim(),
           );
       if (!mounted) return;
-      context.go('/home', extra: {'showTutorial': true});
+      // First-time federated users must still accept the Terms &
+      // Conditions before landing on /home — the email+password funnel
+      // routes through this same screen, so Google sign-up is no longer
+      // the odd one out that skips the step.
+      context.go('/onboarding/terms');
     } on AuthFailure catch (failure) {
       if (!mounted) return;
       setState(() => _serverError = failure.message);

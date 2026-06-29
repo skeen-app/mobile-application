@@ -25,6 +25,14 @@ class TutorialController extends StateNotifier<TutorialStep> {
     }
   }
 
+  /// Re-runs the tutorial on demand (e.g. from Profile → "Replay
+  /// tutorial"), ignoring the persisted completed flag so the user can
+  /// review the walkthrough any time after registration.
+  void restart() {
+    if (_userId.isEmpty) return;
+    state = TutorialStep.homeScan;
+  }
+
   void advanceToCamera() {
     if (state == TutorialStep.homeScan) {
       state = TutorialStep.cameraCapture;

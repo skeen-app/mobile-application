@@ -476,6 +476,17 @@ class _SettingsSection extends StatelessWidget {
             label: 'Privacy & Security'.tr,
             onTap: () => context.pushNamed('privacy-security'),
           ),
+          const _Divider(),
+          ProfileSettingsRow(
+            iconData: Icons.school_outlined,
+            label: 'Replay tutorial'.tr,
+            // Re-launch the walkthrough from the home screen, bypassing the
+            // "already completed" flag via the forceTutorial extra.
+            onTap: () => context.goNamed(
+              'home',
+              extra: const {'forceTutorial': true},
+            ),
+          ),
         ],
       ),
     );

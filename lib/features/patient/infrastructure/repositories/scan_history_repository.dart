@@ -97,7 +97,7 @@ class HttpScanHistoryRepository implements ScanHistoryRepository {
     return ScanHistoryEntry(
       id: r.id,
       bodyPartLabel: _displayLabel(r.bodyPartLabel, r.bodyRegion),
-      region: _slugToRegion(r.bodyRegion),
+      region: _slugToRegion(_preferLabel(r.bodyRegion, r.bodyPartLabel)),
       riskLevel: _riskFromString(r.riskLevel),
       scannedAt: r.capturedAt,
       thumbnailUrl: r.imageDownloadUrl,
@@ -126,6 +126,15 @@ class HttpScanHistoryRepository implements ScanHistoryRepository {
   static String _displayLabel(String? bodyPart, String? region) {
     if (bodyPart != null && bodyPart.isNotEmpty) return bodyPart;
     return _slugToRegion(region).displayLabel;
+  }
+
+  /// The picked label ("Head", "Left Arm", …) is the user's authoritative
+  /// choice; the slug is a lossy projection that some rows may be missing.
+  /// Prefer the label so a scan tagged "Head" never collapses to the chest
+  /// default — mirrors [LesionSummaryRepository]'s region resolution.
+  static String? _preferLabel(String? slug, String? label) {
+    if (label != null && label.trim().isNotEmpty) return label;
+    return slug;
   }
 
   static BodyRegion _slugToRegion(String? slug) {

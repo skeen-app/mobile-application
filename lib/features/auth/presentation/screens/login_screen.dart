@@ -93,6 +93,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
     if (outcome.needsProfileCompletion) {
       context.go('/onboarding/complete-profile');
+    } else if (outcome.isNewUser) {
+      // New account that already has a complete profile (rare for Google,
+      // but possible if the backend pre-filled DNI): still gate on the
+      // Terms & Conditions before /home.
+      context.go('/onboarding/terms');
     } else {
       context.go('/home');
     }

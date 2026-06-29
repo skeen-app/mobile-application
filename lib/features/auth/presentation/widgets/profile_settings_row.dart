@@ -9,12 +9,20 @@ import '../../../../core/theme/app_colors.dart';
 class ProfileSettingsRow extends StatelessWidget {
   const ProfileSettingsRow({
     super.key,
-    required this.iconAsset,
+    this.iconAsset,
+    this.iconData,
     required this.label,
     required this.onTap,
-  });
+  }) : assert(
+          iconAsset != null || iconData != null,
+          'Provide either an iconAsset or an iconData',
+        );
 
-  final String iconAsset;
+  /// SVG asset path for the leading icon. Mutually exclusive with
+  /// [iconData] — rows that don't ship a bespoke SVG can pass a Material
+  /// [IconData] instead.
+  final String? iconAsset;
+  final IconData? iconData;
   final String label;
   final VoidCallback onTap;
 
@@ -36,15 +44,21 @@ class ProfileSettingsRow extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: SvgPicture.asset(
-                    iconAsset,
-                    width: 18,
-                    height: 18,
-                    colorFilter: const ColorFilter.mode(
-                      AppColors.violetaLink,
-                      BlendMode.srcIn,
-                    ),
-                  ),
+                  child: iconAsset != null
+                      ? SvgPicture.asset(
+                          iconAsset!,
+                          width: 18,
+                          height: 18,
+                          colorFilter: const ColorFilter.mode(
+                            AppColors.violetaLink,
+                            BlendMode.srcIn,
+                          ),
+                        )
+                      : Icon(
+                          iconData,
+                          size: 18,
+                          color: AppColors.violetaLink,
+                        ),
                 ),
               ),
               const SizedBox(width: 16),

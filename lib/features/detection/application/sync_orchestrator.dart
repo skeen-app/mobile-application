@@ -177,8 +177,10 @@ class SyncOrchestrator {
         bodyRegionSlug: _bodyRegionSlug(fullRecord.bodyRegion),
         bodyPartLabel: fullRecord.bodyRegion,
         riskLevelSlug: risk,
-        relativePositionX: _autoPositionX(fullRecord.bodyRegion),
-        relativePositionY: _autoPositionY(fullRecord.bodyRegion),
+        relativePositionX:
+            _autoPositionX(fullRecord.bodyRegion, fullRecord.id),
+        relativePositionY:
+            _autoPositionY(fullRecord.bodyRegion, fullRecord.id),
         hasImage: fullRecord.imageBytes != null && fullRecord.imageBytes!.isNotEmpty,
       );
       final created = await api.createScan(token: token, payload: payload);
@@ -251,12 +253,15 @@ class SyncOrchestrator {
   }
 
   // Distribute moles along the limb instead of stacking them at the
-  // anatomical centroid — uses a deterministic hash of the (assumed
-  // unique) timestamp microseconds so the same scan always lands at the
-  // same dot.
-  double? _autoPositionX(String? label) {
+  // anatomical centroid. The scatter is seeded off the (stable) scan id so
+  // the same scan ALWAYS lands at the same dot — both before sync (local
+  // projection) and after (cloud read), and across re-syncs when the user
+  // re-tags. Coordinates are normalized against the 58×165 silhouette grid
+  // the body map renders against.
+  double? _autoPositionX(String? label, String scanId) {
     final region = _bodyRegionSlug(label);
     if (region == null) return null;
+    final seed = scanId.hashCode;
     switch (region) {
       case 'head':
         return 23 / 58;
@@ -267,46 +272,47 @@ class SyncOrchestrator {
       case 'back':
         return 28 / 58;
       case 'leftArm':
-        return _scatter(8, 14) / 58;
+        return _scatter(8, 14, seed) / 58;
       case 'rightArm':
-        return _scatter(44, 50) / 58;
+        return _scatter(44, 50, seed) / 58;
       case 'leftLeg':
-        return _scatter(20, 26) / 58;
+        return _scatter(20, 26, seed) / 58;
       case 'rightLeg':
-        return _scatter(34, 40) / 58;
+        return _scatter(34, 40, seed) / 58;
     }
     return null;
   }
 
-  double? _autoPositionY(String? label) {
+  double? _autoPositionY(String? label, String scanId) {
     final region = _bodyRegionSlug(label);
     if (region == null) return null;
+    // Decorrelate the Y seed from X so dots don't fall on a diagonal.
+    final seed = scanId.hashCode ^ 0x9E3779B9;
     switch (region) {
       case 'head':
         return 18 / 165;
       case 'neck':
         return 30 / 165;
       case 'chest':
-        return _scatter(40, 60).toDouble() / 165;
+        return _scatter(40, 60, seed).toDouble() / 165;
       case 'abdomen':
-        return _scatter(60, 78).toDouble() / 165;
+        return _scatter(60, 78, seed).toDouble() / 165;
       case 'back':
-        return _scatter(40, 78).toDouble() / 165;
+        return _scatter(40, 78, seed).toDouble() / 165;
       case 'leftArm':
       case 'rightArm':
-        return _scatter(45, 90).toDouble() / 165;
+        return _scatter(45, 90, seed).toDouble() / 165;
       case 'leftLeg':
       case 'rightLeg':
-        return _scatter(95, 145).toDouble() / 165;
+        return _scatter(95, 145, seed).toDouble() / 165;
     }
     return null;
   }
 
-  int _scatter(int low, int high) {
+  int _scatter(int low, int high, int seed) {
     final range = high - low;
     if (range <= 0) return low;
-    final seed = DateTime.now().microsecondsSinceEpoch;
-    return low + (seed % range);
+    return low + (seed.abs() % range);
   }
 
   bool _isOnline(ConnectivityResult r) =>

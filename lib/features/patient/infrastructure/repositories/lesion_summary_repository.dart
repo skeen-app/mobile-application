@@ -79,7 +79,7 @@ class LesionSummaryRepository {
   }
 
   LesionSummary _remoteToSummary(ScanRemote r) {
-    final region = _slugToRegion(r.bodyRegion);
+    final region = _slugToRegion(_preferLabel(r.bodyRegion, r.bodyPartLabel));
     final pos = (r.relativePositionX != null && r.relativePositionY != null)
         ? (x: r.relativePositionX!, y: r.relativePositionY!)
         : _defaultPositionFor(region);
@@ -99,6 +99,17 @@ class LesionSummaryRepository {
       status: _statusFromWarning(a.result.warningLevel.name),
       relativePosition: _defaultPositionFor(region, seed: a.id.hashCode),
     );
+  }
+
+  /// The picked label ("Head", "Left Arm", …) is the user's authoritative
+  /// choice and is what [SecureLesionRepository.upsertCloudSnapshot] caches
+  /// locally; the slug is a lossy projection that some rows may be missing
+  /// (older scans, or a backend that didn't echo `body_region` back).
+  /// Prefer the explicit label so a scan tagged "Head" never collapses to
+  /// the chest default.
+  static String? _preferLabel(String? slug, String? label) {
+    if (label != null && label.trim().isNotEmpty) return label;
+    return slug;
   }
 
   static BodyRegion _slugToRegion(String? slug) {
