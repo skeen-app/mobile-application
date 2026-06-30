@@ -15,7 +15,7 @@ import '../domain/ports.dart';
 ///
 /// **This is the ONLY place the crop math lives.** Both cascade models
 /// receive the same cropped buffer afterwards; each still does its own
-/// `copyResize` to 224 / 240 downstream.
+/// `copyResize` to 224 downstream.
 class ImageCaptureCropper implements CaptureCropperPort {
   const ImageCaptureCropper();
 

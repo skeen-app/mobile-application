@@ -1,13 +1,23 @@
-/// The five lesion classes emitted by `skeen_model_v2.tflite`.
+/// The six lesion classes emitted by `skeen_v3.tflite` (EfficientNet-B0).
 ///
-/// Order MUST match the model's output index map (see AI_MODEL_SPECS.md):
-///   0 actinic_keratosis · 1 bcc · 2 melanoma · 3 nevus · 4 scc
+/// Order MUST match the model's output index map EXACTLY:
+///   0 ACK  actinic_keratosis (pre-cancerous)
+///   1 BCC  basal cell carcinoma      → malignant
+///   2 MEL  melanoma                  → malignant
+///   3 NEV  nevus                     → benign
+///   4 SCC  squamous cell carcinoma   → malignant
+///   5 OTHER other benign lesions (e.g. seborrheic keratosis)
+///
+/// The first five slugs are unchanged from the previous 5-class model and in
+/// the same positions, so scans persisted by the old model deserialize into
+/// the correct class; only the new index 5 (`other`) is additive.
 enum ClassLabel {
   actinicKeratosis(slug: 'actinic_keratosis', display: 'Actinic Keratosis'),
   bcc(slug: 'bcc', display: 'Basal Cell Carcinoma'),
   melanoma(slug: 'melanoma', display: 'Melanoma'),
   nevus(slug: 'nevus', display: 'Benign Nevus'),
-  scc(slug: 'scc', display: 'Squamous Cell Carcinoma');
+  scc(slug: 'scc', display: 'Squamous Cell Carcinoma'),
+  other(slug: 'other', display: 'Other lesion');
 
   const ClassLabel({
     required this.slug,
@@ -17,17 +27,24 @@ enum ClassLabel {
   final String slug;
   final String display;
 
-  /// Nevus is the only class clinically considered benign. Every other class
-  /// is malignant or pre-malignant and must be surfaced with elevated visual
-  /// weight regardless of confidence (see AI_MODEL_SPECS.md priority rule).
-  bool get isBenign => this == ClassLabel.nevus;
+  /// Confirmed-malignant classes that count toward the cascade's
+  /// `malignant_sum` and elevate the risk level: {BCC, MEL, SCC}.
+  bool get isMalignant =>
+      this == ClassLabel.bcc ||
+      this == ClassLabel.melanoma ||
+      this == ClassLabel.scc;
 
-  /// The four classes that count toward the cascade's `malignant_sum`:
-  /// {actinic_keratosis, bcc, melanoma, scc}. Complement of [isBenign].
-  bool get isMalignant => this != ClassLabel.nevus;
+  /// Pre-cancerous, NOT confirmed malignant. Surfaced with elevated weight
+  /// (caution) per clinical policy but excluded from the malignant sum.
+  bool get isPrecancerous => this == ClassLabel.actinicKeratosis;
 
-  /// Two of the five classes drive the project's recall target (SCC 0.77 +
-  /// Melanoma). They are the highest-priority alerts in the UI palette.
+  /// Clinically benign classes: {NEV, OTHER}. Only these can yield a
+  /// reassuring verdict.
+  bool get isBenign =>
+      this == ClassLabel.nevus || this == ClassLabel.other;
+
+  /// The two classes driving the project's recall target (Melanoma + SCC).
+  /// Highest-priority alerts in the UI palette.
   bool get isHighRisk => this == ClassLabel.scc || this == ClassLabel.melanoma;
 
   static ClassLabel fromIndex(int i) => ClassLabel.values[i];

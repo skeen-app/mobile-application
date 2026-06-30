@@ -118,7 +118,7 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/models/skeen_model_v2.tflite
+    - assets/models/skeen_v3.tflite
     - assets/models/skin_detector_v1.tflite
     - assets/images/
     - assets/images/home/

@@ -408,12 +408,18 @@ const Map<String, String> enTranslations = {
   'triage.inconclusive.message':
       'Inconclusive result. Evaluation by a specialist is recommended for '
           'an accurate diagnosis.',
+  'triage.precancerous.title': 'Pre-cancerous features',
+  'triage.precancerous.message':
+      'Features compatible with a pre-cancerous lesion (actinic keratosis). '
+          'This is not a confirmed cancer, but evaluation by a dermatologist '
+          'is recommended.',
   // Lesion type display names (used for the {type} placeholder).
   'Actinic Keratosis': 'Actinic Keratosis',
   'Basal Cell Carcinoma': 'Basal Cell Carcinoma',
   'Melanoma': 'Melanoma',
   'Benign Nevus': 'Benign Nevus',
   'Squamous Cell Carcinoma': 'Squamous Cell Carcinoma',
+  'Other lesion': 'Other lesion',
 };
 
 const Map<String, String> esTranslations = {
@@ -827,10 +833,16 @@ const Map<String, String> esTranslations = {
   'triage.inconclusive.message':
       'Resultado no concluyente. Se recomienda evaluación por un '
           'especialista para un diagnóstico preciso.',
+  'triage.precancerous.title': 'Características precancerosas',
+  'triage.precancerous.message':
+      'Características compatibles con una lesión precancerosa (queratosis '
+          'actínica). No es un cáncer confirmado, pero se recomienda '
+          'evaluación por un dermatólogo.',
   // Lesion type display names (used for the {type} placeholder).
   'Actinic Keratosis': 'Queratosis actínica',
   'Basal Cell Carcinoma': 'Carcinoma basocelular',
   'Melanoma': 'Melanoma',
   'Benign Nevus': 'Nevo benigno',
   'Squamous Cell Carcinoma': 'Carcinoma escamocelular',
+  'Other lesion': 'Otra lesión',
 };

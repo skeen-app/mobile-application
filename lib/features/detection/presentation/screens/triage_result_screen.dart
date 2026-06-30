@@ -575,6 +575,7 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
       case TriageCategory.malignantSpecific:
         return AppColors.fucsia;
       case TriageCategory.malignantUnspecified:
+      case TriageCategory.precancerous:
       case TriageCategory.inconclusive:
         return AppColors.naranja;
       case TriageCategory.benign:

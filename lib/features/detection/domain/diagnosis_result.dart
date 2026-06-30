@@ -27,6 +27,11 @@ enum TriageCategory {
   /// `TH_SPECIFIC`. Risk present, type undetermined.
   malignantUnspecified,
 
+  /// `ack_p >= TH_PRECANCEROUS`. Findings compatible with a pre-cancerous
+  /// lesion (actinic keratosis). Not confirmed malignant, but warrants
+  /// dermatologist evaluation per clinical policy.
+  precancerous,
+
   /// None of the above thresholds met. Inconclusive — recommend specialist.
   inconclusive,
 }
