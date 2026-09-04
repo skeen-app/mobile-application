@@ -1,45 +1,35 @@
-/// ── Guide-box crop experiment (FASE 2) ──────────────────────────────────
+/// ── Guide-box geometry ──────────────────────────────────────────────────
 ///
-/// The classifier was trained on dermatoscopic frames (lesion centered and
-/// dominant). The phone camera produces wide frames with lots of background
-/// and surrounding skin, so the lesion the user frames in the on-screen guide
-/// box only fills a fraction of what reaches the model. This config gates an
-/// experiment that crops the captured JPEG to that centered guide region
-/// before the cascade runs, narrowing the domain gap.
+/// The classifier was trained on dermatoscopic frames (lesion centred and
+/// dominant). A phone frame carries far more surrounding skin, so the capture
+/// is cropped to the region the user framed inside the on-screen guide box
+/// before the cascade runs.
 ///
-/// All knobs live here so A/B testing is a one-line change + hot restart —
-/// no logic path changes. The flag is read in exactly two places:
-///   • [DetectionController.captureAndClassify] — applies the crop once to
-///     the buffer that feeds BOTH models (skin gate + classifier).
-///   • [CaptureGuideOverlay] — sizes the visual box to match the cropped
-///     region so "what you frame" stays "what gets analyzed".
+/// **One source of truth.** These constants define the guide box *on screen*
+/// only. Everything downstream — the region readiness metrics are measured
+/// over, and the region cropped out of the capture for the models — is
+/// derived from that box through `resolveGuideBoxSide` and
+/// `CaptureRoi.fromPreviewGeometry`, using the real preview↔frame mapping.
+///
+/// This used to be three independent derivations: the overlay drew a box, the
+/// metrics sampled a separately-derived region, and the cropper cut a blind
+/// `0.55` of the captured image's shorter side. They agreed only at the
+/// aspect ratio the constant happened to be tuned for and drifted apart at
+/// every other one, so "what you frame" was not "what gets analysed". The
+/// `CropStrategy` enum that used to live here existed to approximate the
+/// mapping that is now computed properly, and is gone with it.
 library;
 
-/// Master A/B switch. When `false`, the cascade behaves EXACTLY as before the
-/// experiment (full standardized capture → models, no extra crop, 220 px
-/// visual box). When `true`, only the centered guide region feeds the models.
+/// Master switch. When `false`, the full standardized capture reaches the
+/// models untouched and the guide box falls back to its fixed logical size.
 const bool kGuideCropEnabled = true;
 
-/// Side of the square crop as a fraction of the incoming capture's shorter
-/// side, used by [CropStrategy.centeredFraction]. `0.55` ≈ the historical
-/// 220 px on-screen guide box. Lower = tighter / more dermatoscopic; higher =
-/// safer against clipping an off-center or large lesion. Calibrate empirically.
+/// Side of the on-screen guide box as a fraction of the preview's **shorter
+/// side**. This is a UI dimension: how much of the viewfinder the box covers.
+/// The fraction of the *captured frame* that ends up analysed is derived from
+/// it, not equal to it.
 const double kGuideCropRatio = 0.55;
 
-/// Logical-pixel side of the visual guide box. Shared between the overlay and
-/// the [CropStrategy.coverGeometry] mapping so the box the user sees and the
-/// region actually analyzed stay coupled. Historical value was 220.
+/// Fallback logical-pixel side for the guide box, used when the preview has
+/// not been laid out yet or cropping is disabled.
 const double kGuideBoxLogicalPx = 220.0;
-
-/// Crop mapping strategy.
-///  • [centeredFraction] — surface-agnostic. Crops the central
-///    [kGuideCropRatio] square. Works for BOTH the AR-native capture and the
-///    plain-camera capture. **Default.**
-///  • [coverGeometry] — higher-fidelity variant intended for the plain-camera
-///    `BoxFit.cover` preview only: derives the crop size from the real
-///    on-screen box-to-preview proportion ([kGuideBoxLogicalPx] vs the
-///    preview's shorter side) instead of a blind constant. Still emits a
-///    centered square, so it stays robust on the AR path too.
-enum CropStrategy { centeredFraction, coverGeometry }
-
-const CropStrategy kGuideCropStrategy = CropStrategy.centeredFraction;

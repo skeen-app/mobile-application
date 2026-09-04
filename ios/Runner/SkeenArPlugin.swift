@@ -127,7 +127,105 @@ import UIKit
                   let frame = self.session.currentFrame else { return }
             let cm = self.sampleCenterDistanceCm(frame: frame)
             let estimated = !self.hasLidar
-            self.distanceSink?(["cm": cm, "estimated": estimated])
+            // `brightness` + `tracking` complete the ArFrameInfo contract on
+            // the Dart side. ArSessionService._onDistanceEvent only emits an
+            // ArFrameInfo when at least one of them is present, so while this
+            // payload carried just {cm, estimated} the frameInfo stream never
+            // fired on iOS: ArScanScreen kept `_tracking == "UNKNOWN"`, its
+            // ready-streak never accumulated and the scene-mapping phase
+            // never completed. Both keys use the SAME scale/vocabulary as the
+            // Android plugin — see the two helpers below.
+            self.distanceSink?([
+                "cm": cm,
+                "estimated": estimated,
+                "brightness": self.sampleMeanLuma(frame: frame),
+                "tracking": self.trackingStateName(frame.camera.trackingState)
+            ])
+        }
+    }
+
+    /// Mean luminance of the frame, on the **0–255 mean-Y scale**.
+    ///
+    /// Scale contract: the Dart thresholds in `CaptureQuality.fromBrightness`
+    /// (55 / 85 / 195 / 225) were tuned against the mean of the Y (luma)
+    /// plane — the same quantity `ScanCameraService._onImage` computes for
+    /// the plain-camera path. This therefore averages the luma plane
+    /// directly and deliberately does NOT use ARKit's
+    /// `lightEstimate.ambientIntensity` (lux, ~0–2000+) or a normalized
+    /// pixel-intensity ratio: those sit on different scales and would
+    /// systematically miscoach the user.
+    ///
+    /// Sampled on a ~32×32 grid — the same density as the Android camera
+    /// path — so the 10 Hz timer stays cheap.
+    private func sampleMeanLuma(frame: ARFrame) -> Double {
+        let buffer = frame.capturedImage
+        CVPixelBufferLockBaseAddress(buffer, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+
+        // Plane 0 of the biplanar YCbCr buffer ARKit hands back is the
+        // full-resolution luma plane.
+        guard CVPixelBufferGetPlaneCount(buffer) > 0,
+              let base = CVPixelBufferGetBaseAddressOfPlane(buffer, 0)
+        else { return Double.nan }
+
+        let width = CVPixelBufferGetWidthOfPlane(buffer, 0)
+        let height = CVPixelBufferGetHeightOfPlane(buffer, 0)
+        let rowStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+        guard width > 0, height > 0 else { return Double.nan }
+
+        let stepX = max(1, width / 32)
+        let stepY = max(1, height / 32)
+        let luma = base.assumingMemoryBound(to: UInt8.self)
+
+        var sum = 0
+        var count = 0
+        var y = 0
+        while y < height {
+            let row = y * rowStride
+            var x = 0
+            while x < width {
+                sum += Int(luma[row + x])
+                count += 1
+                x += stepX
+            }
+            y += stepY
+        }
+        guard count > 0 else { return Double.nan }
+
+        let mean = Double(sum) / Double(count)
+        // Video-range buffers pack luma into 16…235. Rescale those to the
+        // full 0…255 span so the value stays comparable with the Android
+        // reading regardless of which format the session negotiated.
+        let isVideoRange = CVPixelBufferGetPixelFormatType(buffer)
+            == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        guard isVideoRange else { return mean }
+        return min(255.0, max(0.0, (mean - 16.0) * 255.0 / 219.0))
+    }
+
+    /// Maps ARKit's tracking state onto the **ARCore vocabulary** the Dart
+    /// side already speaks: `ArFrameInfo.isTracking` compares against the
+    /// literal `"TRACKING"`, and the Android plugin emits
+    /// `com.google.ar.core.TrackingState.name()`.
+    ///
+    ///   ARKit `.normal`       → `"TRACKING"` (ARCore TRACKING — usable)
+    ///   ARKit `.limited(_)`   → `"PAUSED"`   (ARCore PAUSED — session alive
+    ///                                         but the pose isn't reliable
+    ///                                         yet: initializing, excessive
+    ///                                         motion, insufficient features)
+    ///   ARKit `.notAvailable` → `"STOPPED"`  (ARCore STOPPED — no pose)
+    ///
+    /// Sharing one vocabulary keeps the readiness gate in `ar_scan_screen`
+    /// free of per-platform branches.
+    private func trackingStateName(_ state: ARCamera.TrackingState) -> String {
+        switch state {
+        case .normal:
+            return "TRACKING"
+        case .limited:
+            return "PAUSED"
+        case .notAvailable:
+            return "STOPPED"
+        @unknown default:
+            return "UNKNOWN"
         }
     }
 

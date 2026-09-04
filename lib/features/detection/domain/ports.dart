@@ -2,8 +2,11 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'ar_geometry.dart';
+import 'capture_roi.dart';
+import 'capture_telemetry.dart';
 import 'inference_result.dart';
 import 'lesion_analysis.dart';
+import 'roi_frame_metrics.dart';
 import 'scan_remote.dart';
 import 'skin_gate_result.dart';
 
@@ -27,15 +30,17 @@ abstract class SkinGateServicePort {
   Future<void> dispose();
 }
 
-/// Outbound port for the guide-box crop step (FASE 2 experiment). Crops the
-/// captured JPEG to the centered region the user framed, BEFORE it reaches
-/// the cascade, so both models see a tighter, more dermatoscopic input.
+/// Outbound port for the guide-box crop step. Crops the captured JPEG to the
+/// region the user framed, BEFORE it reaches the cascade, so both models see
+/// a tighter, more dermatoscopic input.
 ///
+/// [roi] is the SAME value that sized the on-screen guide box and bounded the
+/// readiness metrics — callers must never derive a crop region of their own.
 /// Flag-gated via `capture_crop_config.dart`: when cropping is disabled the
 /// implementation returns the bytes untouched ([CropOutcome.applied] ==
-/// false). [previewSize] is only consulted by the `coverGeometry` strategy.
+/// false).
 abstract class CaptureCropperPort {
-  Future<CropOutcome> crop(Uint8List jpegBytes, {required Size previewSize});
+  Future<CropOutcome> crop(Uint8List jpegBytes, {required CaptureRoi roi});
 }
 
 /// Result of a [CaptureCropperPort.crop] call. Besides the (possibly
@@ -105,11 +110,29 @@ abstract class ScanCameraServicePort {
   Future<void> initialize();
   bool get isReady;
 
-  /// Brightness (Y-plane mean 0–255) stream, throttled ~3 Hz.
-  Stream<double> get brightness;
+  /// Whether the device exposes any usable camera. Probed before
+  /// initialization so an ineligible device can be declared rather than
+  /// failing later with an opaque error.
+  Future<bool> hasCamera();
 
-  /// Sharpness (Laplacian variance normalized 0–1) stream, throttled ~3 Hz.
-  Stream<double> get sharpness;
+  /// Per-frame measurements taken **inside the ROI** set by [setRoi],
+  /// throttled ~3 Hz. Replaces the previous split brightness/sharpness
+  /// streams: the readiness gate needs the whole vector from one frame, and
+  /// two independently throttled streams could not guarantee that.
+  Stream<RoiFrameMetrics> get metrics;
+
+  /// Restricts metric sampling to the region the user sees inside the guide
+  /// box. Until a surface calls this, metrics cover the whole frame
+  /// ([CaptureRoi.full]).
+  void setRoi(CaptureRoi roi);
+
+  /// The ROI currently being measured, for telemetry.
+  CaptureRoi get roi;
+
+  /// Size of the live preview frame in sensor (landscape) orientation, or
+  /// null before initialization. Surfaces need it to derive the ROI from the
+  /// real preview↔frame mapping.
+  Size? get previewFrameSize;
 
   /// Physical torch LED on the device.
   Future<void> setFlash(bool on);
@@ -130,6 +153,50 @@ abstract class ScanCameraServicePort {
   Future<void> restartSampling();
 
   Future<void> dispose();
+}
+
+/// Outbound port for the motion sensor that backs the stability check.
+///
+/// Separate from the camera port because it is a genuinely independent
+/// signal: inferring shake from image blur conflates camera motion with
+/// defocus, so the two must be measured by different hardware to be able to
+/// tell the user which one is actually wrong.
+abstract class StabilitySensorPort {
+  /// Smoothed gyroscope magnitude in rad/s. Emits nothing on devices with no
+  /// gyroscope, which keeps [CaptureStability.unknown] in force and the gate
+  /// shut rather than silently passing.
+  Stream<double> get angularSpeed;
+
+  /// Whether this device actually has a usable gyroscope.
+  ///
+  /// Determined by subscribing and waiting for a sample: a gyroscope streams
+  /// continuously — reporting values near zero when the phone is still — so
+  /// silence within the window means the sensor is absent or the platform
+  /// refused it, never merely that the device was held steady.
+  Future<bool> isAvailable({Duration timeout});
+
+  Future<void> start();
+  Future<void> stop();
+}
+
+/// Sidecar store for experimental capture telemetry.
+///
+/// Intentionally NOT part of [LesionRepositoryPort]: the clinical record and
+/// the study instrumentation have different retention and consent, and the
+/// capture path must be able to record a rejected or failed attempt, which
+/// never produces a [LesionAnalysis] at all.
+abstract class CaptureTelemetryPort {
+  Future<void> initialize();
+  Future<void> record(CaptureTelemetryRecord record);
+
+  /// Writes the start-of-session capability check, so an excluded device is
+  /// counted instead of disappearing from the study silently.
+  Future<void> recordEligibility(DeviceEligibilityRecord record);
+
+  /// All rows as JSON Lines, for export off the device at study close-out.
+  Future<String> exportJsonl();
+
+  Future<int> count();
 }
 
 /// Encapsulates platform AR feature availability. Returned by

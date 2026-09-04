@@ -21,6 +21,7 @@ import '../../application/providers.dart';
 import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/capture_quality.dart';
+import '../../domain/capture_roi.dart';
 import '../../infrastructure/ar_session_service.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
@@ -183,20 +184,19 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
         ? CaptureQuality.fromBrightness(_seenBrightness)
         : CaptureQuality.initial;
     final tracking = _tracking == 'TRACKING';
-    // AR depth below ~10 cm is noisy and the user is rarely standing
-    // still inside that band on first contact — but we DO want the
-    // distance chip to react to the live reading so the new overlay
-    // can coach with directional arrows. Source the bool gate from
-    // the depth stream when available, fall back to "in range" when
-    // the session hasn't reported a frame yet.
-    final lastDistance = ref.read(detectionControllerProvider).distance;
-    final distanceOk = lastDistance.isKnown
-        ? lastDistance.isInAcceptableRange
-        : true;
+    // The AR surface has no ROI metric pipeline: ARCore owns the camera, so
+    // there is no image stream to measure glare, colour cast or lesion scale
+    // from. `gatingSignals: false` keeps this surface on the two-term gate it
+    // has always used rather than blocking it on signals it never populates —
+    // and those unmeasured signals are correspondingly not shown to the user.
+    //
+    // The old `distance` term is gone entirely. It was sourced from ARCore
+    // Depth, which does not resolve below roughly half a metre, so at macro
+    // working distance it was noise being presented as a measurement.
     return CaptureReadiness(
       lighting: lighting,
       focus: tracking,
-      distance: distanceOk,
+      gatingSignals: false,
     );
   }
 
@@ -350,7 +350,14 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
     }
     if (detection.phase != DetectionPhase.ready) return;
     final controller = ref.read(detectionControllerProvider.notifier);
-    await controller.captureAndClassify(previewSize: _previewSize);
+    await controller.captureAndClassify(
+      previewSize: _previewSize,
+      // ARCore owns the camera here and never reports the CPU frame's
+      // dimensions to Dart, so this surface genuinely cannot derive the real
+      // preview↔frame mapping. It keeps the historical constant, explicitly
+      // named. Not the study's capture surface.
+      roi: const CaptureRoi.unverifiedGuideFraction(),
+    );
   }
 
   Future<void> _navigateToTriage(DetectionState state) async {
@@ -501,7 +508,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
                 if (detection.phase == DetectionPhase.ready)
                   CaptureGuideOverlay(
                     readiness: detection.readiness,
-                    distance: detection.distance,
+                    boxSide: resolveGuideBoxSide(_previewSize.shortestSide),
                   ),
 
                 if (detection.phase == DetectionPhase.mapping ||

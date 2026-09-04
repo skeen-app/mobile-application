@@ -5,39 +5,74 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:image/image.dart' as img;
 
+import '../domain/capture_roi.dart';
 import '../domain/ports.dart';
+import '../domain/roi_frame_metrics.dart';
+import '../domain/roi_metrics_calculator.dart';
 
-/// Infrastructure wrapper around the `camera` plugin scoped to the AR scan
-/// flow. Owns the [CameraController] lifecycle and exposes throttled
-/// luminance + sharpness streams that the presentation layer turns into
-/// quality guidance for assisted capture.
+/// Infrastructure wrapper around the `camera` plugin scoped to the scan
+/// flow. Owns the [CameraController] lifecycle and exposes a throttled
+/// stream of ROI measurements that the readiness gate turns into blocking
+/// capture guidance.
 class ScanCameraService implements ScanCameraServicePort {
   ScanCameraService();
 
   CameraController? _controller;
   bool _isStreaming = false;
   DateTime _lastSample = DateTime.fromMillisecondsSinceEpoch(0);
-  final StreamController<double> _brightnessController =
-      StreamController<double>.broadcast();
-  final StreamController<double> _sharpnessController =
-      StreamController<double>.broadcast();
+  // Re-created by [initialize] when a previous [dispose] closed it — see
+  // the note there. Not `final` for that reason only.
+  StreamController<RoiFrameMetrics> _metricsController =
+      StreamController<RoiFrameMetrics>.broadcast();
+
+  CaptureRoi _roi = CaptureRoi.full;
 
   CameraController? get controller => _controller;
   @override
   bool get isReady => _controller?.value.isInitialized ?? false;
 
-  /// Stream of mean Y-plane brightness (0–255), throttled to ~3 Hz to keep
-  /// the main isolate responsive while still feeling live to the user.
+  /// Stream of ROI measurements, throttled to ~3 Hz to keep the main isolate
+  /// responsive while still feeling live.
+  ///
+  /// One stream rather than the previous separate brightness/sharpness pair:
+  /// the gate evaluates the whole vector at once, and independently throttled
+  /// streams could mix readings from different frames.
   @override
-  Stream<double> get brightness => _brightnessController.stream;
+  Stream<RoiFrameMetrics> get metrics => _metricsController.stream;
 
-  /// Stream of sharpness scores (0–1), derived from Laplacian variance on
-  /// a sparse Y-plane subsample. Same throttle cadence as brightness.
   @override
-  Stream<double> get sharpness => _sharpnessController.stream;
+  CaptureRoi get roi => _roi;
+
+  @override
+  void setRoi(CaptureRoi roi) => _roi = roi;
+
+  @override
+  Size? get previewFrameSize => _controller?.value.previewSize;
+
+  @override
+  Future<bool> hasCamera() async {
+    try {
+      final cameras = await availableCameras();
+      return cameras.isNotEmpty;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Camera probe failed: $e');
+      return false;
+    }
+  }
 
   @override
   Future<void> initialize() async {
+    // This service is provider-scoped (not auto-disposed) while the scan
+    // screens call [dispose] on every background transition and
+    // re-initialize on resume. A closed broadcast controller can never emit
+    // again, so without this the metrics stream went silent
+    // for the rest of the process — and since the plain-camera surface now
+    // promotes `mapping → ready` off a readiness event, a capture rejected
+    // after a background/resume cycle could never re-open the shutter.
+    if (_metricsController.isClosed) {
+      _metricsController = StreamController<RoiFrameMetrics>.broadcast();
+    }
+
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
       throw StateError('No cameras available on this device');
@@ -77,91 +112,103 @@ class ScanCameraService implements ScanCameraServicePort {
     if (now.difference(_lastSample).inMilliseconds < 320) return;
     _lastSample = now;
 
-    final plane = image.planes.first;
-    final bytes = plane.bytes;
-    if (bytes.isEmpty) return;
+    if (image.planes.isEmpty || image.width < 8 || image.height < 8) return;
 
-    final isBgra = image.format.group == ImageFormatGroup.bgra8888;
-    final pixelStride = isBgra ? 4 : 1;
-    final rowStride = plane.bytesPerRow;
-    // For BGRA, the Green channel is at offset 1 (B=0, G=1, R=2, A=3).
-    final colorOffset = isBgra ? 1 : 0;
+    // Every metric is measured over this region only — the part of the frame
+    // the user sees inside the guide box. Whole-frame sampling let a textured
+    // background read as "sharp" while the lesion was blurred, and a bright
+    // wall behind a shadowed limb read as "well lit".
+    final bounds = _roi.boundsIn(image.width, image.height);
 
-    final width = image.width;
-    final height = image.height;
-    if (width < 3 || height < 3) return;
-
-    // ── Brightness: sparse subsample ──────────────────
-    final stepX = width ~/ 32;
-    final stepY = height ~/ 32;
-    
-    var sumLum = 0;
-    var countLum = 0;
-    for (var y = 0; y < height; y += stepY) {
-      final yOffset = y * rowStride;
-      for (var x = 0; x < width; x += stepX) {
-        final index = yOffset + x * pixelStride + colorOffset;
-        if (index < bytes.length) {
-          sumLum += bytes[index];
-          countLum++;
-        }
+    try {
+      final measured = image.format.group == ImageFormatGroup.bgra8888
+          ? _measureBgra(image, bounds)
+          : _measureYuv(image, bounds);
+      if (measured.sampleCount > 0 && !_metricsController.isClosed) {
+        _metricsController.add(measured);
       }
-    }
-    
-    if (countLum > 0) {
-      final meanBrightness = sumLum / countLum;
-      if (!_brightnessController.isClosed) {
-        _brightnessController.add(meanBrightness);
-      }
-    }
-
-    // ── Sharpness: Laplacian variance on sparse grid ────────────────
-    const gridStep = 8; // sample every 8th pixel for speed
-    var lapSum = 0.0;
-    var lapSumSq = 0.0;
-    var lapCount = 0;
-    
-    // Pre-calculate strides for neighboring pixels
-    final topOffset = -rowStride;
-    final bottomOffset = rowStride;
-    final leftOffset = -pixelStride;
-    final rightOffset = pixelStride;
-    
-    for (var y = gridStep; y < height - gridStep; y += gridStep) {
-      final yBase = y * rowStride;
-      for (var x = gridStep; x < width - gridStep; x += gridStep) {
-        final index = yBase + x * pixelStride + colorOffset;
-        
-        // Fast bounds check
-        if (index + bottomOffset >= bytes.length) break;
-        
-        final center = bytes[index];
-        final top = bytes[index + topOffset];
-        final bottom = bytes[index + bottomOffset];
-        final left = bytes[index + leftOffset];
-        final right = bytes[index + rightOffset];
-        
-        final laplacian = (4 * center - top - bottom - left - right).abs();
-        lapSum += laplacian;
-        lapSumSq += laplacian * laplacian;
-        lapCount++;
-      }
-    }
-    
-    if (lapCount > 0) {
-      final mean = lapSum / lapCount;
-      final variance = (lapSumSq / lapCount) - (mean * mean);
-      // Normalize variance to 0–1 range. Empirically, dermatology macro
-      // photos at ~15 cm produce variance 200–2000+ for sharp frames.
-      final normalized = (variance / 2000.0).clamp(0.0, 1.0);
-      if (!_sharpnessController.isClosed) {
-        _sharpnessController.add(normalized);
-      }
+    } catch (e) {
+      // A malformed frame must not kill the stream the gate depends on.
+      if (kDebugMode) debugPrint('ROI metric sampling failed: $e');
     }
   }
 
-  /// Re-start the image stream after capture so brightness/sharpness
-  /// streams resume emitting. Safe to call multiple times.
+  /// BGRA8888 (iOS). Colour is directly addressable. Luma uses the Rec. 601
+  /// weights instead of the green channel as a stand-in, so it lands on the
+  /// same 0-255 scale as the YUV path's Y plane and one set of thresholds
+  /// applies to both platforms.
+  RoiFrameMetrics _measureBgra(CameraImage image, RoiBounds bounds) {
+    final plane = image.planes.first;
+    final bytes = plane.bytes;
+    final rowStride = plane.bytesPerRow;
+    const pixelStride = 4;
+
+    return computeRoiMetrics(
+      bounds: bounds,
+      luma: (x, y) {
+        final i = y * rowStride + x * pixelStride;
+        if (i < 0 || i + 2 >= bytes.length) return 0;
+        return (0.299 * bytes[i + 2] +
+                0.587 * bytes[i + 1] +
+                0.114 * bytes[i])
+            .round();
+      },
+      rgb: (x, y) {
+        final i = y * rowStride + x * pixelStride;
+        if (i < 0 || i + 2 >= bytes.length) return const RgbPixel(0, 0, 0);
+        return RgbPixel(bytes[i + 2], bytes[i + 1], bytes[i]);
+      },
+    );
+  }
+
+  /// YUV420 (Android). Luma comes from plane 0; colour is reconstructed from
+  /// the half-resolution chroma planes with the Rec. 601 inverse, which is
+  /// what makes the white-balance check possible on this platform at all.
+  RoiFrameMetrics _measureYuv(CameraImage image, RoiBounds bounds) {
+    final yPlane = image.planes[0];
+    final yBytes = yPlane.bytes;
+    final yRowStride = yPlane.bytesPerRow;
+    final yPixelStride = yPlane.bytesPerPixel ?? 1;
+
+    int lumaAt(int x, int y) {
+      final i = y * yRowStride + x * yPixelStride;
+      return (i >= 0 && i < yBytes.length) ? yBytes[i] : 0;
+    }
+
+    if (image.planes.length < 3) {
+      // Luma-only buffer. Report the cast as neutral rather than inventing
+      // channel means: we have no evidence of a cast, so that check passes
+      // while every other metric stays a real measurement.
+      return computeRoiMetrics(bounds: bounds, luma: lumaAt);
+    }
+
+    final uBytes = image.planes[1].bytes;
+    final vBytes = image.planes[2].bytes;
+    final uvRowStride = image.planes[1].bytesPerRow;
+    final uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+
+    RgbPixel rgbAt(int x, int y) {
+      final luma = lumaAt(x, y);
+      final uvIndex = (y >> 1) * uvRowStride + (x >> 1) * uvPixelStride;
+      if (uvIndex < 0 ||
+          uvIndex >= uBytes.length ||
+          uvIndex >= vBytes.length) {
+        return RgbPixel(luma, luma, luma);
+      }
+      final u = uBytes[uvIndex] - 128;
+      final v = vBytes[uvIndex] - 128;
+      return RgbPixel(
+        (luma + 1.402 * v).round().clamp(0, 255),
+        (luma - 0.344136 * u - 0.714136 * v).round().clamp(0, 255),
+        (luma + 1.772 * u).round().clamp(0, 255),
+      );
+    }
+
+    return computeRoiMetrics(bounds: bounds, luma: lumaAt, rgb: rgbAt);
+  }
+
+  /// Re-start the image stream after capture so the metrics stream resumes
+  /// emitting. Safe to call multiple times.
   ///
   /// Includes a brief cooldown because the camera hardware needs a moment
   /// after `takePicture()` before it can accept `startImageStream()` again.
@@ -332,8 +379,7 @@ class ScanCameraService implements ScanCameraServicePort {
     }
     await _controller?.dispose();
     _controller = null;
-    await _brightnessController.close();
-    await _sharpnessController.close();
+    await _metricsController.close();
   }
 }
 

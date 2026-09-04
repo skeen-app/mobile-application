@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/widgets/skeen_top_app_bar.dart';
@@ -14,15 +15,22 @@ import '../../../../core/widgets/tutorial_controller.dart';
 import '../../../patient/application/lesion_summary_providers.dart';
 import '../../../patient/application/scan_history_providers.dart';
 import '../../application/detection_controller.dart';
+import '../../application/experiment_session.dart';
 import '../../application/providers.dart';
 import '../../application/readiness_evaluator.dart';
 import '../../application/sync_orchestrator.dart';
+import '../../domain/capture_crop_config.dart';
 import '../../domain/capture_quality.dart';
+import '../../domain/capture_roi.dart';
+import '../../domain/capture_telemetry.dart';
+import '../../domain/device_eligibility.dart';
+import '../../domain/ports.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
 import '../widgets/capture_guide_overlay.dart';
 import '../widgets/floating_diagnosis_label.dart';
+import '../widgets/not_skin_detected_dialog.dart';
 import '../widgets/scan_capture_button.dart';
 
 /// Fallback scan screen for devices without AR/depth sensor support.
@@ -40,6 +48,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     with WidgetsBindingObserver {
   late final ScanCameraService _camera;
   late final ReadinessEvaluator _evaluator;
+  late final CaptureTelemetryPort _telemetry;
   StreamSubscription<CaptureReadiness>? _readinessSub;
 
   CaptureQuality _quality = CaptureQuality.initial;
@@ -48,6 +57,28 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
   String? _initError;
   bool _permissionPermanentlyDenied = false;
   Size _previewSize = Size.zero;
+
+  /// Side of the on-screen guide square, resolved from the laid-out preview.
+  /// Feeds both the overlay and the ROI so the region the user frames is
+  /// exactly the region the metrics describe.
+  double _guideBoxSide = kGuideBoxLogicalPx;
+  CaptureRoi? _appliedRoi;
+
+  // ── Gate + auto-capture ──────────────────────────────────────────────
+  /// Dwell the gate must stay green before the shutter fires itself.
+  ///
+  /// This is the mechanism the study expects to produce the measurable
+  /// difference: the tap itself is a motion impulse at exactly the moment
+  /// the frame is being taken, and removing it removes that blur source.
+  /// 600 ms is long enough to outlast the wobble from the user settling into
+  /// position, short enough that a steady hand is not asked to hold an
+  /// unnatural pose.
+  static const int kAutoCaptureDwellMs = 600;
+
+  Timer? _gateTicker;
+  DateTime? _greenSince;
+  double _autoProgress = 0;
+  final Uuid _uuid = const Uuid();
 
   // Pinch-to-zoom state
   double _currentZoom = 1.0;
@@ -60,6 +91,8 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     WidgetsBinding.instance.addObserver(this);
     _camera = ref.read(scanCameraServiceProvider);
     _evaluator = ref.read(readinessEvaluatorProvider);
+    _telemetry = ref.read(captureTelemetryProvider);
+    _telemetry.initialize();
     _bootstrap();
   }
 
@@ -86,8 +119,13 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       await _camera.initialize();
       _maxZoom = await _camera.getMaxZoom();
 
-      // Start readiness (no AR distance in fallback — defaults to OK)
-      _evaluator.start();
+      // Push the ROI before the metric stream starts so the very first
+      // measurement already describes the guide box and not the whole frame.
+      _syncRoi();
+
+      // start() is awaited because it now cancels any previous subscriptions
+      // first — see ReadinessEvaluator.start.
+      await _evaluator.start();
 
       _readinessSub = _evaluator.readiness.listen((r) {
         if (!mounted) return;
@@ -96,7 +134,16 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
           _quality = r.lighting;
         });
         ref.read(detectionControllerProvider.notifier).updateReadiness(r);
+        // This surface has no AR scene-mapping ticker, so nothing used to
+        // advance the controller out of [DetectionPhase.mapping]: the
+        // shutter stayed inert (captureAndClassify returns on its `ready`
+        // guard) and CaptureGuideOverlay never mounted. A readiness event
+        // is proof the image stream is delivering frames — exactly the
+        // "camera is live" signal this surface can gate on.
+        _promoteToReadyWhenLive();
       });
+
+      _startGateTicker();
 
       if (mounted) {
         setState(() {
@@ -108,6 +155,123 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       if (kDebugMode) debugPrint('Camera init failed: $e');
       if (mounted) setState(() => _initError = e.toString());
     }
+  }
+
+  /// Whether the blocking guidance is actually in force right now.
+  ///
+  /// Fail-closed while the hardware probe is still running: an unresolved
+  /// eligibility must hold the shutter, never open it, or a guided-arm
+  /// participant could slip an ungated capture through during the probe
+  /// window and contaminate the intervention.
+  ///
+  /// Resolved-ineligible turns guidance OFF rather than leaving a gate that
+  /// can never open. Study participants never reach that state — they are
+  /// shown the exclusion screen — so this only covers ordinary users on a
+  /// device that cannot run the guidance.
+  bool _guidanceInForce() {
+    final session = ref.read(experimentSessionProvider);
+    if (!session.isGuided) return false;
+    final eligibility = ref.read(deviceEligibilityProvider).valueOrNull;
+    if (eligibility == null) return true;
+    return eligibility.isEligible;
+  }
+
+  /// Derives the metric ROI from the **real** preview↔frame mapping and
+  /// pushes it to the camera service.
+  ///
+  /// Replaces the blind 0.55 constant: the preview renders `BoxFit.cover`, so
+  /// the fraction of the frame the guide box covers depends on the widget's
+  /// aspect and the sensor's, and only the layout knows both. Re-pushed only
+  /// when it actually changes, since this runs from `build`.
+  void _syncRoi() {
+    final preview = _camera.previewFrameSize;
+    if (preview == null || _previewSize == Size.zero) return;
+    final roi = CaptureRoi.fromPreviewGeometry(
+      widgetSize: _previewSize,
+      frameSize: CaptureRoi.displayFrameSize(preview),
+      guideBoxSide: _guideBoxSide,
+    );
+    if (roi == _appliedRoi) return;
+    _appliedRoi = roi;
+    _camera.setRoi(roi);
+  }
+
+  /// Drives the auto-shutter dwell.
+  ///
+  /// Runs on its own 50 ms timer rather than off the ~3 Hz readiness stream:
+  /// at 333 ms granularity a 600 ms dwell would actually fire somewhere
+  /// between 600 and 933 ms, which is too loose for the study's independent
+  /// variable and makes the progress ring visibly steppy.
+  void _startGateTicker() {
+    _gateTicker?.cancel();
+    _gateTicker = Timer.periodic(
+      const Duration(milliseconds: 50),
+      (_) => _onGateTick(),
+    );
+  }
+
+  void _onGateTick() {
+    if (!mounted) return;
+    final guided = _guidanceInForce();
+    final phase = ref.read(detectionControllerProvider).phase;
+
+    // The control arm has no gate and no auto-shutter by design — it is the
+    // comparator, so it must behave like a plain camera.
+    if (!guided || phase != DetectionPhase.ready || !_readiness.isReady) {
+      if (_greenSince != null || _autoProgress != 0) {
+        setState(() {
+          _greenSince = null;
+          _autoProgress = 0;
+        });
+      }
+      return;
+    }
+
+    final since = _greenSince ??= DateTime.now();
+    final heldMs = DateTime.now().difference(since).inMilliseconds;
+
+    if (heldMs >= kAutoCaptureDwellMs) {
+      _greenSince = null;
+      setState(() => _autoProgress = 0);
+      _fireCapture(CaptureTrigger.automatic);
+      return;
+    }
+
+    final progress = (heldMs / kAutoCaptureDwellMs).clamp(0.0, 1.0);
+    if ((progress - _autoProgress).abs() > 0.01) {
+      setState(() => _autoProgress = progress);
+    }
+  }
+
+  /// Fallback-surface equivalent of the AR screen's scene-mapping ticker.
+  ///
+  /// The AR path unlocks capture once ARCore reports a stable TRACKING
+  /// streak; there is no tracking state here, so the equivalent proof that
+  /// the surface is live is the camera controller being initialized *and*
+  /// the image stream emitting (the caller only runs this from a readiness
+  /// event, which the stream produces).
+  ///
+  /// [DetectionController.completeMapping] is a no-op unless the phase is
+  /// still `mapping`, so this is safe to call on every readiness event —
+  /// and that repetition is deliberate: it also re-promotes the phase after
+  /// [DetectionController.restartMapping] sends the flow back to `mapping`
+  /// on a skin-gate rejection.
+  void _promoteToReadyWhenLive() {
+    if (!_camera.isReady) return;
+    ref.read(detectionControllerProvider.notifier).completeMapping();
+  }
+
+  /// Skin-gate rejection handler — mirrors `ArScanScreen._showNotSkinDialog`.
+  /// Without this the fallback surface stranded the user in the terminal
+  /// `notSkinRejected` phase with no way back to `ready`.
+  Future<void> _showNotSkinDialog() async {
+    await NotSkinDetectedDialog.show(context);
+    if (!mounted) return;
+    // Whatever the dismiss path (CTA or back gesture), return the flow to
+    // the mapping phase so the next attempt re-runs the readiness gate.
+    // restartMapping() restarts the image stream, so the readiness listener
+    // fires again and [_promoteToReadyWhenLive] re-opens the shutter.
+    await ref.read(detectionControllerProvider.notifier).restartMapping();
   }
 
   /// Empty-state retry CTA — opens system settings when the permission is
@@ -147,20 +311,49 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _gateTicker?.cancel();
     _readinessSub?.cancel();
+    // The evaluator is provider-scoped and outlives this screen, so its
+    // sensor subscriptions have to be released here or the gyroscope keeps
+    // streaming after the user leaves the scanner.
+    _evaluator.stop();
     _camera.dispose();
     super.dispose();
   }
 
   /// Capture pipeline — routed entirely through DetectionController which
   /// handles AE/AF lock, capture, inference, persistence, and stream restart.
-  Future<void> _handleCapture() async {
+  ///
+  /// Two things wrap it here, and neither touches the pipeline itself:
+  /// the **gate**, which refuses a capture the readiness vector says would be
+  /// bad, and the **telemetry**, which records the vector that decision was
+  /// made on.
+  Future<void> _fireCapture(CaptureTrigger trigger) async {
     final detection = ref.read(detectionControllerProvider);
 
     if (detection.phase == DetectionPhase.presented) {
       _navigateToTriage(detection);
       return;
     }
+    if (detection.phase != DetectionPhase.ready) return;
+
+    final session = ref.read(experimentSessionProvider);
+
+    // The gate is the study's independent variable, so it has to actually
+    // block — including a deliberate tap. In the control arm it does not
+    // exist at all.
+    if (_guidanceInForce() && !_readiness.isReady) return;
+
+    // Snapshot BEFORE the capture: these are the conditions the shutter
+    // fired under. Reading them afterwards would capture the post-capture
+    // state, when the stream has been paused and restarted.
+    final readinessAtShutter = _readiness;
+    final metricsAtShutter = _evaluator.lastMetrics;
+    final roiAtShutter = _camera.roi;
+    final calibrator = _evaluator.calibrator;
+    final sharpnessNormalized = calibrator.normalized;
+    final sharpnessObservedMax = calibrator.observedMax;
+    final sharpnessCalibrating = calibrator.isCalibrating;
 
     setState(() => _showShutterFlash = true);
     Future.delayed(const Duration(milliseconds: 140), () {
@@ -168,7 +361,42 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     });
 
     final controller = ref.read(detectionControllerProvider.notifier);
-    await controller.captureAndClassify(previewSize: _previewSize);
+    await controller.captureAndClassify(
+      previewSize: _previewSize,
+      // The region the models get is the region the box drew and the gate
+      // measured — one derivation, not three.
+      roi: roiAtShutter,
+    );
+    if (!mounted) return;
+
+    final after = ref.read(detectionControllerProvider);
+    final outcome = switch (after.phase) {
+      DetectionPhase.notSkinRejected => CaptureOutcome.rejectedNotSkin,
+      DetectionPhase.failed => CaptureOutcome.failed,
+      _ => after.savedAnalysisId != null
+          ? CaptureOutcome.saved
+          : CaptureOutcome.failed,
+    };
+
+    // Recorded for every attempt, including rejections and failures: an arm
+    // that produces fewer unusable frames is itself the result being
+    // measured, and those attempts never reach the lesion repository.
+    await _telemetry.record(
+      CaptureTelemetryRecord.fromSnapshot(
+        id: _uuid.v4(),
+        participantId: session.participantId,
+        condition: session.condition,
+        trigger: trigger,
+        outcome: outcome,
+        readiness: readinessAtShutter,
+        metrics: metricsAtShutter,
+        roi: roiAtShutter,
+        sharpnessNormalized: sharpnessNormalized,
+        sharpnessObservedMax: sharpnessObservedMax,
+        sharpnessCalibrating: sharpnessCalibrating,
+        analysisId: after.savedAnalysisId,
+      ),
+    );
   }
 
   Future<void> _navigateToTriage(DetectionState state) async {
@@ -226,6 +454,29 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Skin-gate rejection → educational modal, then back to mapping. Mirrors
+    // the same listener in ArScanScreen so BOTH capture surfaces recover
+    // from the terminal notSkinRejected phase. The listener runs once per
+    // transition, not on every rebuild.
+    ref.listen<DetectionState>(detectionControllerProvider, (prev, next) {
+      final wasRejected = prev?.phase == DetectionPhase.notSkinRejected;
+      final isRejected = next.phase == DetectionPhase.notSkinRejected;
+      if (isRejected && !wasRejected) {
+        _showNotSkinDialog();
+      }
+    });
+    // Watched (not just read) so the screen rebuilds when the hardware probe
+    // resolves and the gate/shutter state settles with it.
+    final eligibility = ref.watch(deviceEligibilityProvider).valueOrNull;
+    final session = ref.watch(experimentSessionProvider);
+    final ineligible = eligibility != null && !eligibility.isEligible;
+
+    // A study device that cannot run the guided arm is EXCLUDED, explicitly
+    // and on the record — not left with a shutter that silently never opens.
+    if (ineligible && session.isStudyDevice) {
+      return _StudyIneligibleScreen(missing: eligibility.missing);
+    }
+
     final detection = ref.watch(detectionControllerProvider);
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -237,6 +488,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
               title: 'Scan a mole'.tr,
               subtitle: 'AI analysis in seconds'.tr,
             ),
+            if (ineligible) const _GuidanceUnavailableBanner(),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -264,6 +516,8 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
       child: LayoutBuilder(
         builder: (context, constraints) {
           _previewSize = Size(constraints.maxWidth, constraints.maxHeight);
+          _guideBoxSide = resolveGuideBoxSide(_previewSize.shortestSide);
+          _syncRoi();
           return GestureDetector(
             onScaleStart: _onScaleStart,
             onScaleUpdate: _onScaleUpdate,
@@ -291,10 +545,14 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                 // so distance defaults to the sweet-spot constant — the
                 // chip stays in the "ok" state, matching the readiness
                 // gate above.
-                if (detection.phase == DetectionPhase.ready)
+                // Guidance exists only in the guided arm — the control arm
+                // has to look and behave like a plain camera for the
+                // comparison to mean anything.
+                if (detection.phase == DetectionPhase.ready && _guidanceInForce())
                   CaptureGuideOverlay(
                     readiness: _readiness,
-                    distance: detection.distance,
+                    boxSide: _guideBoxSide,
+                    autoCaptureProgress: _autoProgress,
                   ),
 
                 // Subtle disclaimer: AR is not available on this device.
@@ -396,6 +654,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                 // Analyzing / uploading overlay
                 if (detection.phase == DetectionPhase.analyzing ||
                     detection.phase == DetectionPhase.standardizing ||
+                    detection.phase == DetectionPhase.gating ||
                     detection.phase == DetectionPhase.uploading)
                   Container(
                     color: Colors.black.withValues(alpha: 0.35),
@@ -436,10 +695,15 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
   }
 
   Widget _buildBottomControls(DetectionState detection) {
+    final guided = _guidanceInForce();
     final isPresented = detection.phase == DetectionPhase.presented;
     final isBusy = detection.phase == DetectionPhase.capturing ||
         detection.phase == DetectionPhase.analyzing ||
         detection.phase == DetectionPhase.standardizing ||
+        // Without `gating` the shutter looked re-enabled while the
+        // skin-gate ran, inviting a second tap right before the
+        // rejection dialog. Matches the AR screen's busy set.
+        detection.phase == DetectionPhase.gating ||
         detection.phase == DetectionPhase.uploading;
 
     return Padding(
@@ -458,7 +722,10 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
               ScanCaptureButton(
                 quality: _quality,
                 isCapturing: isBusy,
-                onPressed: _handleCapture,
+                // Blocked while any check is red in the guided arm. This is
+                // the intervention: the user cannot take a bad photo.
+                enabled: !guided || _readiness.isReady,
+                onPressed: () => _fireCapture(CaptureTrigger.manual),
               ),
               if (isPresented)
                 _SecondaryAction(
@@ -621,6 +888,147 @@ class _CameraUnavailable extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Shown to a **study participant** whose device cannot run the guided arm.
+///
+/// The point is that the exclusion is visible and attributable. Previously the
+/// same device simply presented a shutter that never unlocked: the participant
+/// gave up, and the study recorded nothing — an invisible, device-tier
+/// correlated dropout that would have reshaped the sample.
+class _StudyIneligibleScreen extends StatelessWidget {
+  const _StudyIneligibleScreen({required this.missing});
+
+  final Set<EligibilityRequirement> missing;
+
+  String _reasonFor(EligibilityRequirement requirement) =>
+      switch (requirement) {
+        EligibilityRequirement.camera => 'No usable camera was found.'.tr,
+        EligibilityRequirement.gyroscope =>
+          'This device has no gyroscope, so camera shake cannot be measured.'
+              .tr,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            SkeenTopAppBar(
+              title: 'Scan a mole'.tr,
+              subtitle: 'Device check'.tr,
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: AppColors.naranja.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.phonelink_erase_outlined,
+                        size: 34,
+                        color: AppColors.naranja,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'This device is not compatible with the study'.tr,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w600,
+                        fontSize: 18,
+                        letterSpacing: -0.18,
+                        color: AppColors.violetaClaro,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    for (final requirement in missing)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Text(
+                          _reasonFor(requirement),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontFamily: 'Poppins',
+                            fontWeight: FontWeight.w500,
+                            fontSize: 13,
+                            height: 1.5,
+                            color: AppColors.hintText,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Please let the study coordinator know so another '
+                              'device can be assigned.'
+                          .tr,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontFamily: 'Poppins',
+                        fontWeight: FontWeight.w500,
+                        fontSize: 12,
+                        height: 1.5,
+                        color: AppColors.hintText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown to an ordinary (non-study) user on a device that cannot run the
+/// guidance. They keep a working camera; what they lose is the assistance, and
+/// they are told so rather than left with a gate that can never open.
+class _GuidanceUnavailableBanner extends StatelessWidget {
+  const _GuidanceUnavailableBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.naranja.withValues(alpha: 0.12),
+          border: Border.all(color: AppColors.naranja.withValues(alpha: 0.35)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline, size: 15, color: AppColors.naranja),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Capture assistance is unavailable on this device.'.tr,
+                style: const TextStyle(
+                  fontFamily: 'Poppins',
+                  fontWeight: FontWeight.w500,
+                  fontSize: 11.5,
+                  color: AppColors.naranja,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

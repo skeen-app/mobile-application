@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import 'capture_scale.dart';
+import 'capture_stability.dart';
+import 'roi_frame_metrics.dart';
+
 /// Coarse buckets describing how usable a live camera frame is for clinical
 /// inference. Drives the on-screen guidance the user sees while framing a
 /// mole, and gates whether the capture button shows an "excellent" badge.
@@ -72,10 +76,14 @@ class CaptureQuality {
   }
 
   /// Initial state shown before the first frame is sampled.
+  ///
+  /// The hint used to read "hold the camera ~15 cm above the lesion". No
+  /// device measures that distance at macro range, so the copy now describes
+  /// the framing the user can verify on screen. See [CaptureScale].
   static const CaptureQuality initial = CaptureQuality(
     level: CaptureQualityLevel.acceptable,
     label: 'Calibrating…',
-    hint: 'Hold the camera ~15 cm above the lesion',
+    hint: 'Frame the mole inside the guide box',
     brightness: 0,
   );
 
@@ -98,34 +106,60 @@ class ReadinessItem {
   final String hint;
 }
 
-/// Composite value object combining the three capture-quality signals
-/// the redesigned capture UX exposes to the user:
-///   • [lighting] — ambient brightness bucketed by [CaptureQuality]
-///   • [focus]    — Laplacian-variance sharpness, true when in range
-///   • [distance] — depth-sensor / focal-distance, true when in 10–20cm
+/// Composite value object over every capture-quality signal, all of them
+/// measured **inside the guide box** (see [CaptureRoi]):
+///   • [lighting]  — mean ROI luma bucketed by [CaptureQuality]
+///   • [focus]     — Laplacian variance, normalized per-device by
+///                   `SharpnessCalibrator`
+///   • [glareOk]   — share of clipped (specular) pixels under the cap
+///   • [colorCast] — per-channel means; a shifted white balance degrades a
+///                   chromatic classifier's input
+///   • [stability] — gyroscope angular speed, measured not inferred
+///   • [scale]     — lesion size relative to the guide box; replaces the
+///                   old distance readout, which no device could measure
 ///
-/// The previous "stability" flag was dropped on purpose: the autofocus
-/// settle was already implicit in the focus signal, and exposing a
-/// fourth indicator made the capture screen feel busy. The three above
-/// are the actual differentiators for a standardised, model-friendly
-/// dermatology shot.
+/// [isReady] is the study's independent variable: it gates the shutter, so
+/// every term in it must be a real measurement. Signals that could not be
+/// measured report "unknown" and hold the gate **shut** rather than
+/// defaulting to pass.
 @immutable
 class CaptureReadiness {
   const CaptureReadiness({
     required this.lighting,
     required this.focus,
-    required this.distance,
+    this.glareOk = true,
+    this.colorCast = ColorCast.neutral,
+    this.stability = CaptureStability.unknown,
+    this.scale = const CaptureScale.unknown(),
+    this.gatingSignals = true,
   });
 
   final CaptureQuality lighting;
 
-  /// Focus quality from Laplacian variance. Imported from `focus_quality.dart`.
-  final bool focus; // true = sharp enough
+  /// True when normalized sharpness clears its threshold.
+  final bool focus;
 
-  /// Distance from the AR depth sensor / camera estimate.
-  final bool distance; // true = in acceptable range
+  /// True when specular clipping is under [RoiFrameMetrics.maxGlareFraction].
+  final bool glareOk;
 
-  bool get isReady => lighting.canCapture && focus && distance;
+  final ColorCast colorCast;
+  final CaptureStability stability;
+  final CaptureScale scale;
+
+  /// False on surfaces that do not measure the full signal set (the AR
+  /// screen, which has no ROI metric pipeline). Those surfaces keep the
+  /// legacy two-term gate instead of being blocked by signals they never
+  /// populate — and, being unmeasured, those signals are also never shown.
+  final bool gatingSignals;
+
+  bool get colorNeutral => colorCast.isNeutral;
+
+  /// Every hard condition. Used to gate the shutter and to arm auto-capture.
+  bool get isReady {
+    if (!lighting.canCapture || !focus) return false;
+    if (!gatingSignals) return true;
+    return glareOk && colorNeutral && stability.isSteady && scale.isAcceptable;
+  }
 
   List<ReadinessItem> get checklist => [
         ReadinessItem(
@@ -140,21 +174,48 @@ class CaptureReadiness {
               ? 'Focus is locked — hold steady'
               : 'Hold still and let autofocus settle',
         ),
-        ReadinessItem(
-          label: 'Distance',
-          passed: distance,
-          hint: distance
-              ? 'Distance is optimal (~15 cm)'
-              : 'Hold the camera 10–20 cm from the lesion',
-        ),
+        if (gatingSignals) ...[
+          ReadinessItem(
+            label: 'Glare',
+            passed: glareOk,
+            hint: glareOk
+                ? 'No glare on the skin'
+                : 'Turn off the flash or tilt away from the light',
+          ),
+          ReadinessItem(
+            label: 'Colour',
+            passed: colorNeutral,
+            hint: colorNeutral
+                ? 'Colour looks neutral'
+                : 'Move to more neutral light — daylight works best',
+          ),
+          ReadinessItem(
+            label: 'Steady',
+            passed: stability.isSteady,
+            hint: stability.isSteady
+                ? 'Holding steady'
+                : 'Hold the phone still',
+          ),
+          ReadinessItem(
+            label: 'Framing',
+            passed: scale.isAcceptable,
+            hint: switch (scale.advice) {
+              ScaleAdvice.ok => 'The mole fills the box well',
+              ScaleAdvice.moveCloser =>
+                'Move closer until the mole fills the box',
+              ScaleAdvice.moveAway => 'Move back — the mole overflows the box',
+              ScaleAdvice.tooCloseToFocus =>
+                'Too close to focus — move back a little',
+              ScaleAdvice.unknown => 'Point the camera at the mole',
+            },
+          ),
+        ],
       ];
 
-  /// All checks pass count (0–3).
   int get passedCount => checklist.where((i) => i.passed).length;
 
   static const CaptureReadiness initializing = CaptureReadiness(
     lighting: CaptureQuality.initial,
     focus: false,
-    distance: false,
   );
 }

@@ -12,11 +12,17 @@ class ScanCaptureButton extends StatelessWidget {
     required this.quality,
     required this.onPressed,
     required this.isCapturing,
+    this.enabled = true,
   });
 
   final CaptureQuality quality;
   final VoidCallback onPressed;
   final bool isCapturing;
+
+  /// False while the readiness gate is red. The button stays visible but
+  /// inert and dimmed: hiding it would leave the user with no idea where the
+  /// shutter went, while letting it fire would defeat the gate.
+  final bool enabled;
 
   Color _ringColor() {
     switch (quality.level) {
@@ -34,10 +40,14 @@ class ScanCaptureButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ring = _ringColor();
+    final blocked = !enabled && !isCapturing;
     return GestureDetector(
-      onTap: isCapturing ? null : onPressed,
+      onTap: (isCapturing || !enabled) ? null : onPressed,
       behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
+      child: AnimatedOpacity(
+        opacity: blocked ? 0.45 : 1.0,
+        duration: const Duration(milliseconds: 180),
+        child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 78,
         height: 78,
@@ -75,11 +85,12 @@ class ScanCaptureButton extends StatelessWidget {
                       ),
                     ),
                   )
-                : const Icon(
-                    Icons.camera_alt_rounded,
+                : Icon(
+                    blocked ? Icons.lock_outline : Icons.camera_alt_rounded,
                     color: AppColors.violetaClaro,
                     size: 28,
                   ),
+            ),
           ),
         ),
       ),

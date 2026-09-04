@@ -13,6 +13,7 @@ import '../../auth/application/auth_controller.dart';
 import '../../auth/application/privacy_settings.dart';
 import '../domain/ar_geometry.dart';
 import '../domain/capture_quality.dart';
+import '../domain/capture_roi.dart';
 import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
 import '../domain/lesion_analysis.dart';
@@ -256,6 +257,7 @@ class DetectionController extends StateNotifier<DetectionState> {
   /// readiness overlay resumes live updates immediately.
   Future<void> captureAndClassify({
     required Size previewSize,
+    required CaptureRoi roi,
   }) async {
     if (state.phase != DetectionPhase.ready) return;
     // Ensure any leftover anchor from a previous capture is cleared.
@@ -293,12 +295,14 @@ class DetectionController extends StateNotifier<DetectionState> {
       final hash = sha256.convert(bytes).toString();
 
       // ── FASE 2: guide-box crop (flag-gated) ───────────────────────────
-      // Crop the centered guide region ONCE, here, and feed that single
-      // buffer to BOTH cascade stages so they see the same (tighter) input.
+      // Crop the guide region ONCE, here, and feed that single buffer to
+      // BOTH cascade stages so they see the same (tighter) input. [roi] is
+      // supplied by the surface that drew the guide box and measured the
+      // readiness metrics, so all three describe one region.
       // Persistence, PDF and the displayed photo keep the full `bytes`.
       // When the flag is off, [CropOutcome.applied] is false and `modelBytes`
       // == `bytes` (legacy behavior, byte-for-byte).
-      final crop = await _cropper.crop(bytes, previewSize: previewSize);
+      final crop = await _cropper.crop(bytes, roi: roi);
       final modelBytes = crop.bytes;
 
       // Phase: gating — cascade stage-1 (skin / not-skin). Runs on the

@@ -22,6 +22,7 @@ import '../../application/providers.dart';
 import '../../application/sync_orchestrator.dart';
 import '../../domain/ar_geometry.dart';
 import '../../domain/class_label.dart';
+import '../../domain/capture_roi.dart';
 import '../../domain/inference_result.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/not_skin_detected_dialog.dart';
@@ -160,7 +161,9 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       // Persistence + the displayed photo keep the full `bytes`.
       final crop = await ref
           .read(captureCropperProvider)
-          .crop(bytes, previewSize: Size.zero);
+          // A gallery photo has no preview geometry to derive a region from,
+          // so this path keeps the historical constant, explicitly named.
+          .crop(bytes, roi: const CaptureRoi.unverifiedGuideFraction());
       final modelBytes = crop.bytes;
 
       // Cascade stage-1: skin / not-skin filter. Runs on the same

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_colors.dart';
+import '../../application/hint_arbiter.dart';
 import '../../domain/capture_quality.dart';
 
 /// Pre-diagnosis "scene mapping" overlay shown above the AR view.
@@ -29,77 +30,37 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
       AnimationController(vsync: this, duration: const Duration(seconds: 3))
         ..repeat();
 
-  static const _settleMs = 1500;
+  /// Priority + hysteresis now lives in [HintArbiter], shared with
+  /// [CaptureGuideOverlay]. The behaviour is unchanged; it moved out so the
+  /// capture-time gate could reuse it instead of growing a second copy.
+  late final HintArbiter _arbiter = HintArbiter(
+    priority: const ['lighting', 'focus', 'ready'],
+    resolvedKey: 'ready',
+    initial: _failingHint(widget.readiness) ?? 'ready',
+  );
 
-  // Priority order — index 0 = highest. Lower index wins immediately.
-  static const _hintOrder = [
-    'lighting',
-    'distance',
-    'focus',
-    'ready',
-  ];
-
-  String _activeHint = 'lighting';
-  int _satisfiedMs = 0;
   int _lastElapsed = 0;
 
   @override
   void initState() {
     super.initState();
-    _activeHint = _failingHint(widget.readiness) ?? 'ready';
     _lastElapsed = widget.elapsedMs;
   }
 
   @override
   void didUpdateWidget(covariant SceneMappingOverlay old) {
     super.didUpdateWidget(old);
-    final dt = (widget.elapsedMs - _lastElapsed).clamp(0, 1000);
+    final dt = widget.elapsedMs - _lastElapsed;
     _lastElapsed = widget.elapsedMs;
-
-    final failing = _failingHint(widget.readiness);
-
-    if (failing == null) {
-      // Nothing failing — advance toward the "ready" message after settle.
-      _satisfiedMs += dt;
-      if (_activeHint != 'ready' && _satisfiedMs >= _settleMs) {
-        _activeHint = 'ready';
-        _satisfiedMs = 0;
-      }
-      return;
-    }
-
-    if (failing == _activeHint) {
-      _satisfiedMs = 0;
-      return;
-    }
-
-    final newPri = _hintOrder.indexOf(failing);
-    final curPri = _hintOrder.indexOf(_activeHint);
-
-    if (newPri < curPri) {
-      // A higher-priority issue surfaced — switch immediately.
-      _activeHint = failing;
-      _satisfiedMs = 0;
-    } else {
-      // Lower-priority issue. Wait for the current one to be satisfied for
-      // at least _settleMs before yielding the slot. Right now the current
-      // hint is no longer failing (otherwise failing == _activeHint), so
-      // we accumulate satisfied time.
-      _satisfiedMs += dt;
-      if (_satisfiedMs >= _settleMs) {
-        _activeHint = failing;
-        _satisfiedMs = 0;
-      }
-    }
+    _arbiter.update(failing: _failingHint(widget.readiness), dtMs: dt);
   }
 
-  /// Returns the highest-priority failing hint key, or null if all pass.
-  /// The legacy "stability" branch was removed alongside the
-  /// CaptureReadiness.isStable field — focus already implies a settled
-  /// autofocus search.
+  /// The AR surface measures only lighting and tracking — it has no image
+  /// stream to derive glare, colour cast, shake or lesion scale from, so it
+  /// coaches on what it actually knows. The old "distance" hint is gone: it
+  /// was driven by ARCore Depth, which does not resolve at macro range.
   String? _failingHint(CaptureReadiness r) {
     if (!r.lighting.canCapture) return 'lighting';
-    if (!r.distance) return 'distance';
     if (!r.focus) return 'focus';
     return null;
   }
@@ -116,16 +77,10 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
                   : 'Adjust lighting',
           accent: const Color(0xFFFFC857),
         );
-      case 'distance':
-        return const _Hint(
-          icon: Icons.center_focus_strong_outlined,
-          message: 'Move camera closer · ~15 cm',
-          accent: AppColors.violetaClaro,
-        );
       case 'focus':
         return const _Hint(
           icon: Icons.filter_center_focus_outlined,
-          message: 'Hold steady — focusing',
+          message: 'Hold steady — mapping the surface',
           accent: AppColors.violetaClaro,
         );
       case 'ready':
@@ -146,7 +101,7 @@ class _SceneMappingOverlayState extends State<SceneMappingOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final hint = _hintFor(_activeHint, widget.readiness);
+    final hint = _hintFor(_arbiter.active, widget.readiness);
     return IgnorePointer(
       child: Stack(
         children: [

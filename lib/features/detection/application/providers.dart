@@ -1,15 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/device_eligibility.dart';
 import '../domain/ports.dart';
 import '../domain/triage_decision_policy.dart';
 import '../infrastructure/ar_session_service.dart';
 import '../infrastructure/capture_cropper.dart';
+import '../infrastructure/capture_telemetry_repository.dart';
+import '../infrastructure/gyroscope_stability_service.dart';
 import '../infrastructure/scan_camera_service.dart';
 import '../infrastructure/secure_lesion_repository.dart';
 import '../infrastructure/tflite_inference_service.dart';
 import '../infrastructure/tflite_skin_gate_service.dart';
 import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
+import 'eligibility_checker.dart';
+import 'experiment_session.dart';
 import 'readiness_evaluator.dart';
 
 /// DI roots for the Detection bounded context. Kept in `application/` so
@@ -87,13 +92,49 @@ final arCapabilitiesProvider = FutureProvider<ArCapabilities>((ref) async {
   return session.probeCapabilities();
 });
 
-/// Readiness evaluator that combines camera + AR streams.
+/// Gyroscope-backed stability signal. Measured, not inferred from image
+/// blur — the two failure modes (shake vs defocus) need to stay separable so
+/// the coaching can name the right one.
+final stabilitySensorProvider = Provider<StabilitySensorPort>((ref) {
+  final svc = GyroscopeStabilityService();
+  ref.onDispose(svc.dispose);
+  return svc;
+});
+
+/// Sidecar store for experimental capture telemetry. Separate from the
+/// lesion repository on purpose — see [FileCaptureTelemetryRepository].
+final captureTelemetryProvider = Provider<CaptureTelemetryPort>((ref) {
+  return FileCaptureTelemetryRepository();
+});
+
+/// Start-of-session hardware check. Not auto-disposed: the probe result is a
+/// property of the device, and re-running it on every screen entry would cost
+/// a two-second gyroscope wait each time.
+final eligibilityCheckerProvider = Provider<EligibilityChecker>((ref) {
+  return EligibilityChecker(
+    camera: ref.watch(scanCameraPortProvider),
+    stabilitySensor: ref.watch(stabilitySensorProvider),
+    telemetry: ref.watch(captureTelemetryProvider),
+    sessionReader: () => ref.read(experimentSessionProvider),
+  );
+});
+
+/// Resolved eligibility for this device. Surfaces must treat the *pending*
+/// state as blocking, not as passing — see `ScanAMoleScreen`.
+final deviceEligibilityProvider = FutureProvider<DeviceEligibility>((ref) {
+  return ref.watch(eligibilityCheckerProvider).evaluate();
+});
+
+/// Readiness evaluator that folds the ROI metric stream and the gyroscope
+/// into the value that gates the shutter.
 /// NOT auto-dispose — the screen manages start/stop lifecycle manually,
 /// and ref.read() in initState would trigger premature disposal with
 /// auto-dispose (since nothing ref.watch()es this provider in build).
 final readinessEvaluatorProvider = Provider<ReadinessEvaluator>((ref) {
-  final camera = ref.watch(scanCameraServiceProvider);
-  final evaluator = ReadinessEvaluator(camera: camera);
+  final evaluator = ReadinessEvaluator(
+    camera: ref.watch(scanCameraServiceProvider),
+    stabilitySensor: ref.watch(stabilitySensorProvider),
+  );
   ref.onDispose(evaluator.dispose);
   return evaluator;
 });
