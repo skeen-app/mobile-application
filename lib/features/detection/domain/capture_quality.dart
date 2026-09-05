@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'capture_scale.dart';
 import 'capture_stability.dart';
+import 'color_calibration.dart';
+import 'lesion_anchor.dart';
+import 'pose_readiness.dart';
 import 'roi_frame_metrics.dart';
+import 'skin_plane_pose.dart';
 
 /// Coarse buckets describing how usable a live camera frame is for clinical
 /// inference. Drives the on-screen guidance the user sees while framing a
@@ -132,6 +136,11 @@ class CaptureReadiness {
     this.stability = CaptureStability.unknown,
     this.scale = const CaptureScale.unknown(),
     this.gatingSignals = true,
+    this.pose,
+    this.anchor,
+    this.metrics = RoiFrameMetrics.empty,
+    this.poseReadiness = PoseReadiness.absent,
+    this.colorCalibration,
   });
 
   final CaptureQuality lighting;
@@ -146,6 +155,43 @@ class CaptureReadiness {
   final CaptureStability stability;
   final CaptureScale scale;
 
+  /// Camera pose relative to the skin plane, resolved from the fiducial
+  /// marker; null when no marker is in view, the pose is stale, or the device
+  /// cannot report intrinsics. Carried here from WP-1 so overlays and
+  /// telemetry can consume it; it joins [isReady] in WP-3.
+  final SkinPlanePose? pose;
+
+  /// Where the lesion is on screen right now, smoothed and carried forward by
+  /// the gyroscope between measurements. The reticle sits on this.
+  final LesionAnchor? anchor;
+
+  /// The marker-based gate: scale, local tilt and centring. From WP-3 this
+  /// is the term that replaces the fill-based [scale] in [isReady] — the
+  /// standard is metric now, the same px/mm for every lesion whatever its
+  /// size. [scale] stays for the reticle and telemetry.
+  final PoseReadiness poseReadiness;
+
+  /// Ground-truth calibration from the marker's patches, when they were
+  /// readable on the current pose's frame. When present, [colorCast] is the
+  /// white-balanced colour and [skinReferenceReflectance] is available.
+  final ColorCalibration? colorCalibration;
+
+  bool get colorCalibrated => colorCalibration != null;
+
+  /// The reference skin's reflectance relative to the 18% grey patch, or
+  /// null without a calibration or without a segmented reference. This is
+  /// the equity analysis's stratification variable: a property of the
+  /// skin, not of the light that happened to be on.
+  double? get skinReferenceReflectance {
+    final cal = colorCalibration;
+    if (cal == null || metrics.skinReferenceLuma <= 0) return null;
+    return cal.reflectanceOf(metrics.skinReferenceLuma);
+  }
+
+  /// The raw ROI measurements behind this vector. The overlay reads the
+  /// glare map from here to shade the reflection where it actually is.
+  final RoiFrameMetrics metrics;
+
   /// False on surfaces that do not measure the full signal set (the AR
   /// screen, which has no ROI metric pipeline). Those surfaces keep the
   /// legacy two-term gate instead of being blocked by signals they never
@@ -155,11 +201,52 @@ class CaptureReadiness {
   bool get colorNeutral => colorCast.isNeutral;
 
   /// Every hard condition. Used to gate the shutter and to arm auto-capture.
+  ///
+  /// Fail-closed throughout: no marker pose, a stale one, or no segmented
+  /// lesion all leave this false.
   bool get isReady {
     if (!lighting.canCapture || !focus) return false;
     if (!gatingSignals) return true;
-    return glareOk && colorNeutral && stability.isSteady && scale.isAcceptable;
+    return glareOk &&
+        colorNeutral &&
+        stability.isSteady &&
+        poseReadiness.isReady;
   }
+
+  /// The highest-priority failing signal, or null when everything passes.
+  ///
+  /// The order is a sequence the user can follow: light on the lesion, the
+  /// card in view, no reflection, the right distance, level, centred, hold
+  /// still, let it focus, then colour. Shared by the overlay's arbiter and
+  /// the tests so the coaching order is defined once.
+  String? get failingKey {
+    if (!lighting.canCapture) return 'lighting';
+    if (gatingSignals) {
+      if (!poseReadiness.hasPose) return 'marker';
+      if (!glareOk) return 'glare';
+      if (!poseReadiness.scaleOk) return 'scale';
+      if (!poseReadiness.tiltOk) return 'tilt';
+      if (!poseReadiness.centredOk) return 'centre';
+      if (!stability.isSteady) return 'stability';
+    }
+    if (!focus) return 'focus';
+    if (gatingSignals && !colorNeutral) return 'color';
+    return null;
+  }
+
+  /// Coaching keys most to least urgent; `ready` last.
+  static const List<String> coachingPriority = [
+    'lighting',
+    'marker',
+    'glare',
+    'scale',
+    'tilt',
+    'centre',
+    'stability',
+    'focus',
+    'color',
+    'ready',
+  ];
 
   List<ReadinessItem> get checklist => [
         ReadinessItem(
@@ -197,16 +284,35 @@ class CaptureReadiness {
                 : 'Hold the phone still',
           ),
           ReadinessItem(
-            label: 'Framing',
-            passed: scale.isAcceptable,
-            hint: switch (scale.advice) {
-              ScaleAdvice.ok => 'The mole fills the box well',
-              ScaleAdvice.moveCloser =>
-                'Move closer until the mole fills the box',
-              ScaleAdvice.moveAway => 'Move back — the mole overflows the box',
-              ScaleAdvice.tooCloseToFocus =>
-                'Too close to focus — move back a little',
-              ScaleAdvice.unknown => 'Point the camera at the mole',
+            label: 'Marker',
+            passed: poseReadiness.hasPose,
+            hint: poseReadiness.hasPose
+                ? 'Marker in view'
+                : 'Show the marker card next to the mole',
+          ),
+          ReadinessItem(
+            label: 'Scale',
+            passed: poseReadiness.scaleOk,
+            hint: switch (poseReadiness.advice) {
+              PoseAdvice.moveCloser => 'Move closer until the disc fills the box',
+              PoseAdvice.moveAway => 'Move back until the disc fits the box',
+              _ => 'Scale is on target',
+            },
+          ),
+          ReadinessItem(
+            label: 'Tilt',
+            passed: poseReadiness.tiltOk,
+            hint: poseReadiness.tiltOk
+                ? 'Looking straight down at the disc'
+                : 'Level the phone until the ring closes',
+          ),
+          ReadinessItem(
+            label: 'Centred',
+            passed: poseReadiness.centredOk,
+            hint: switch (poseReadiness.advice) {
+              PoseAdvice.findLesion => 'Bring the mole inside the disc',
+              PoseAdvice.centreLesion => 'Centre the mole in the disc',
+              _ => 'Mole centred in the disc',
             },
           ),
         ],

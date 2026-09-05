@@ -1,4 +1,6 @@
 import 'package:skeen/core/localization/locale_controller.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 
@@ -6,29 +8,51 @@ import '../../../../core/theme/app_colors.dart';
 import '../../application/hint_arbiter.dart';
 import '../../domain/capture_quality.dart';
 import '../../domain/capture_scale.dart';
+import '../../domain/capture_standard.dart';
+import '../../domain/display_mapping.dart';
+import '../../domain/lesion_anchor.dart';
+import '../../domain/roi_frame_metrics.dart';
+import '../../domain/skin_plane_pose.dart';
 
-/// Capture-time overlay. Now a blocking gate rather than a readout.
+/// Capture-time overlay. A blocking gate, and — from WP-2 — spatial rather
+/// than textual wherever a signal has a place on screen.
 ///
 /// Layout:
-///   • Centre frame: corner brackets around the guide box. Switches to
-///     brand-violet with a glow the moment every check passes — the single
-///     "you may shoot" signal.
-///   • One coaching line, arbitrated by [HintArbiter] so that with six live
-///     signals the message does not strobe. Reused from the scene-mapping
-///     overlay, which already had this right.
-///   • A compact status row: passing signals collapse to a bare icon,
-///     the failing one keeps its label. Keeps six signals legible on a
-///     narrow screen without hiding any of them.
+///   • Guide box: faint corner brackets marking the analysed region.
+///   • **Lesion reticle** (WP-2d): a ring sitting on the segmented lesion,
+///     sized to it, smoothed and carried by the gyroscope between
+///     measurements. Colour says framing: green when the lesion fills the
+///     box well, orange when the user should move closer or back. Replaces
+///     the "move closer / move back" text.
+///   • **Glare shading** (WP-2c): the clipped cells painted where the
+///     reflection actually is, with an arrow from the highlight away from
+///     the lesion — the direction to tilt. Replaces "adjust lighting".
+///   • One coaching line for what has no spatial form (light, shake,
+///     focus, colour), arbitrated by [HintArbiter] so it does not strobe.
+///   • A compact status row: passing signals collapse to a bare icon, the
+///     failing one keeps its label.
 ///   • Auto-capture progress ring, so the shutter never fires unannounced.
+///
+/// Every spatial element goes through [roiToDisplay], so the sensor→screen
+/// rotation is decided in exactly one place.
 class CaptureGuideOverlay extends StatefulWidget {
   const CaptureGuideOverlay({
     super.key,
     required this.readiness,
     required this.boxSide,
     this.autoCaptureProgress = 0,
+    this.sensorOrientationDegrees = 90,
+    this.streamFrameSize,
   });
 
   final CaptureReadiness readiness;
+
+  /// Camera sensor mounting, for mapping stream coordinates to the screen.
+  final int sensorOrientationDegrees;
+
+  /// Size of the camera stream in sensor orientation. Needed to place the
+  /// plane-registered elements (WP-2a/2b), which live in full-frame pixels.
+  final Size? streamFrameSize;
 
   /// Side of the guide square, resolved by the screen so that the box drawn
   /// here and the ROI the metrics are measured over cannot diverge.
@@ -46,18 +70,8 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
   /// on the lesion, kill the reflection, frame it, hold still, let it focus,
   /// then worry about colour. Anything earlier in this list pre-empts
   /// immediately; anything later has to wait out the settle window.
-  static const List<String> _priority = [
-    'lighting',
-    'glare',
-    'scale',
-    'stability',
-    'focus',
-    'color',
-    'ready',
-  ];
-
   late final HintArbiter _arbiter = HintArbiter(
-    priority: _priority,
+    priority: CaptureReadiness.coachingPriority,
     resolvedKey: 'ready',
     initial: 'lighting',
   );
@@ -71,7 +85,7 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
 
     final now = DateTime.now();
     _arbiter.update(
-      failing: _failingKey(widget.readiness),
+      failing: widget.readiness.failingKey,
       dtMs: now.difference(_lastUpdate).inMilliseconds,
     );
     _lastUpdate = now;
@@ -86,22 +100,6 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
     _previousReady = isReady;
   }
 
-  /// Highest-priority failing signal, or null when everything passes.
-  ///
-  /// Surfaces that do not measure the full vector (`gatingSignals == false`,
-  /// i.e. the AR screen) only ever coach on what they actually measure.
-  static String? _failingKey(CaptureReadiness r) {
-    if (!r.lighting.canCapture) return 'lighting';
-    if (r.gatingSignals) {
-      if (!r.glareOk) return 'glare';
-      if (!r.scale.isAcceptable) return 'scale';
-      if (!r.stability.isSteady) return 'stability';
-    }
-    if (!r.focus) return 'focus';
-    if (r.gatingSignals && !r.colorNeutral) return 'color';
-    return null;
-  }
-
   _Hint _hintFor(String key, CaptureReadiness r) {
     switch (key) {
       case 'lighting':
@@ -114,11 +112,29 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
                   : 'Adjust lighting'.tr,
           accent: const Color(0xFFFFC857),
         );
+      case 'marker':
+        return _Hint(
+          icon: Icons.qr_code_2_outlined,
+          message: 'Show the marker card next to the mole'.tr,
+          accent: AppColors.violetaClaro,
+        );
       case 'glare':
         return _Hint(
           icon: Icons.flare_outlined,
           message: 'Glare on the skin — tilt away or turn the flash off'.tr,
           accent: const Color(0xFFFFC857),
+        );
+      case 'tilt':
+        return _Hint(
+          icon: Icons.screen_rotation_alt_outlined,
+          message: 'Level the phone until the ring closes'.tr,
+          accent: AppColors.violetaClaro,
+        );
+      case 'centre':
+        return _Hint(
+          icon: Icons.center_focus_strong_outlined,
+          message: 'Centre the mole in the disc'.tr,
+          accent: AppColors.violetaClaro,
         );
       case 'scale':
         return _Hint(
@@ -170,16 +186,38 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
     }
   }
 
+  /// Signals that are drawn where they are rather than described: the
+  /// glare shading, the disc's size and colour, the nadir cue, the reticle.
+  static const Set<String> _spatialKeys = {'glare', 'scale', 'tilt', 'centre'};
+
   @override
   Widget build(BuildContext context) {
     final r = widget.readiness;
     final ready = r.isReady;
-    final hint = _hintFor(_arbiter.active, r);
+    final active = _arbiter.active;
+    final hint = _hintFor(active, r);
+    final orientation = widget.sensorOrientationDegrees;
+
+    final pose = r.pose;
+    final stream = widget.streamFrameSize;
 
     return IgnorePointer(
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // ── Plane-registered elements (WP-2a/2b) ────────────────────
+          // Drawn over the whole preview: the disc is where the skin is,
+          // not where the guide box is. It appears only with a live pose.
+          if (r.gatingSignals && pose != null && stream != null)
+            CustomPaint(
+              painter: _PlanePainter(
+                pose: pose,
+                streamSize: stream,
+                orientation: orientation,
+                boxSide: widget.boxSide,
+              ),
+            ),
+
           // ── Centre frame ────────────────────────────────────────────
           Center(
             child: SizedBox(
@@ -222,16 +260,42 @@ class _CaptureGuideOverlayState extends State<CaptureGuideOverlay> {
                         color: const Color(0xFF7BE38C),
                       ),
                     ),
+                  // ── Glare, where it is (WP-2c) ─────────────────────
+                  if (r.gatingSignals)
+                    CustomPaint(
+                      painter: _GlarePainter(
+                        metrics: r.metrics,
+                        lesionCentre: r.anchor?.centre,
+                        orientation: orientation,
+                        emphasise: active == 'glare',
+                      ),
+                    ),
+                  // ── Lesion reticle (WP-2d) ─────────────────────────
+                  if (r.gatingSignals && r.anchor != null)
+                    CustomPaint(
+                      painter: _ReticlePainter(
+                        anchor: r.anchor!,
+                        // With a pose the ring reports centring on the disc;
+                        // without one, the fill-based advice.
+                        advice: r.poseReadiness.hasPose
+                            ? (r.poseReadiness.centredOk
+                                ? ScaleAdvice.ok
+                                : ScaleAdvice.unknown)
+                            : r.scale.advice,
+                        orientation: orientation,
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
 
-          // ── Coaching line ───────────────────────────────────────────
-          Align(
-            alignment: const Alignment(0, 0.62),
-            child: _CoachLabel(hint: hint),
-          ),
+          // ── Coaching line — only for what has no place on screen ────
+          if (!_spatialKeys.contains(active))
+            Align(
+              alignment: const Alignment(0, 0.62),
+              child: _CoachLabel(hint: hint),
+            ),
 
           // ── Status row ──────────────────────────────────────────────
           Positioned(
@@ -415,6 +479,301 @@ class _CoachLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The target disc on the skin plane and the nadir cue above it.
+///
+/// This is the element that makes the guidance AR in the strict sense: it is
+/// a fixed spot on the skin, projected through the measured pose. It
+/// stretches into an ellipse as the phone tilts, grows as the phone comes
+/// closer, and stays put on the skin as the phone moves. One object answers
+/// framing, scale and angle at once:
+///
+///   • **Scale** — the disc is [kRoiSideMm] across on the skin. At the target
+///     px/mm its projection is exactly the guide box's size, so "make the
+///     disc fill the box" *is* the scale gate; the colour says whether it is
+///     within ±[kScaleTolerance].
+///   • **Angle** — a point [TargetDisc.nadirHeightMm] above the disc centre
+///     projects onto the centre exactly when the disc is viewed along its
+///     normal (local tilt zero) and drifts off it otherwise. The ring at
+///     that point closes onto the centre dot when the disc is head-on;
+///     colour by [kMaxTiltDeg] on the local tilt.
+///   • **Framing** — the lesion goes inside the disc (the protocol places
+///     the card so that it does).
+class _PlanePainter extends CustomPainter {
+  _PlanePainter({
+    required this.pose,
+    required this.streamSize,
+    required this.orientation,
+    required this.boxSide,
+  });
+
+  final SkinPlanePose pose;
+  final Size streamSize;
+  final int orientation;
+  final double boxSide;
+
+  static const Color _good = Color(0xFF7BE38C);
+
+  Offset? _toWidget(Offset? streamPx, Size widget) => streamPx == null
+      ? null
+      : streamToWidget(streamPx, streamSize, orientation, widget);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = TargetDisc.centreMm();
+    final radius = TargetDisc.diameterMm / 2;
+
+    // ── Disc: sampled circle in plane mm, projected point by point ────
+    const segments = 48;
+    final ring = <Offset>[];
+    for (var i = 0; i < segments; i++) {
+      final a = 2 * math.pi * i / segments;
+      final p = _toWidget(
+        pose.project(c.dx + radius * math.cos(a), c.dy + radius * math.sin(a)),
+        size,
+      );
+      if (p == null) return; // behind the camera: nothing sensible to draw
+      ring.add(p);
+    }
+    final centre = _toWidget(pose.project(c.dx, c.dy), size);
+    if (centre == null) return;
+
+    // Projected extent along the plane's X axis vs. the guide box: this is
+    // measured px/mm over target px/mm, the scale gate's own ratio.
+    final left = _toWidget(pose.project(c.dx - radius, c.dy), size);
+    final right = _toWidget(pose.project(c.dx + radius, c.dy), size);
+    final projectedDiameter =
+        (left != null && right != null) ? (right - left).distance : 0.0;
+    final scaleRatio = boxSide > 0 ? projectedDiameter / boxSide : 0.0;
+    final scaleOk = (scaleRatio - 1).abs() <= kScaleTolerance;
+    // Local tilt at the disc: what actually foreshortens the lesion, and
+    // what the nadir cue below visualises.
+    final tiltOk = pose.localTiltDeg(c.dx, c.dy) <= kMaxTiltDeg;
+    final predicted = pose.source == PoseSource.predicted;
+
+    final discColor = scaleOk ? _good : AppColors.naranja;
+    final path = Path()..moveTo(ring.first.dx, ring.first.dy);
+    for (final p in ring.skip(1)) {
+      path.lineTo(p.dx, p.dy);
+    }
+    path.close();
+    canvas.drawPath(
+      path,
+      Paint()..color = discColor.withValues(alpha: 0.10),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = discColor.withValues(alpha: predicted ? 0.65 : 0.95)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+
+    // ── Nadir cue: a point above the plane, projected ────────────────
+    final top = _toWidget(
+      pose.project3(c.dx, c.dy, -TargetDisc.nadirHeightMm),
+      size,
+    );
+    if (top == null) return;
+    final tiltColor = tiltOk ? _good : AppColors.naranja;
+    final offset = (top - centre).distance;
+
+    // Stalk from the disc centre up to the floating point.
+    canvas.drawLine(
+      centre,
+      top,
+      Paint()
+        ..color = tiltColor.withValues(alpha: 0.8)
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round,
+    );
+    // Centre dot.
+    canvas.drawCircle(centre, 4, Paint()..color = tiltColor);
+    // Floating ring; when it sits on the dot the phone is level.
+    final closed = offset < 4;
+    canvas.drawCircle(
+      top,
+      10,
+      Paint()
+        ..color = tiltColor
+        ..style = closed ? PaintingStyle.fill : PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PlanePainter old) =>
+      !identical(old.pose, pose) ||
+      old.streamSize != streamSize ||
+      old.orientation != orientation ||
+      old.boxSide != boxSide;
+}
+
+/// Ring on the segmented lesion, sized to it.
+///
+/// The colour is the framing verdict: it replaces the "move closer / move
+/// back" text. A ring that is visibly small inside the box, or spilling out
+/// of it, needs no caption. A predicted (gyroscope-carried) position is
+/// drawn slightly fainter than a measured one.
+class _ReticlePainter extends CustomPainter {
+  _ReticlePainter({
+    required this.anchor,
+    required this.advice,
+    required this.orientation,
+  });
+
+  final LesionAnchor anchor;
+  final ScaleAdvice advice;
+  final int orientation;
+
+  /// The ring is never drawn smaller than this, so a distant speck still
+  /// gets a visible target rather than a dot.
+  static const double minDiameterPx = 24;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final d = roiToDisplay(anchor.centre, orientation);
+    final centre = Offset(d.dx * size.width, d.dy * size.height);
+    final diameter = (anchor.diameterFraction.clamp(0.0, 1.5) * size.width)
+        .clamp(minDiameterPx, size.width * 1.5);
+
+    final color = switch (advice) {
+      ScaleAdvice.ok => const Color(0xFF7BE38C),
+      ScaleAdvice.unknown => Colors.white,
+      _ => AppColors.naranja,
+    };
+    final alpha = anchor.predicted ? 0.7 : 0.95;
+
+    canvas.drawCircle(
+      centre,
+      diameter / 2,
+      Paint()
+        ..color = color.withValues(alpha: alpha)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5,
+    );
+    // Soft fill so the ring reads as "on" the lesion, not around empty skin.
+    canvas.drawCircle(
+      centre,
+      diameter / 2,
+      Paint()..color = color.withValues(alpha: 0.10),
+    );
+    // Direction ticks when the user should change distance: outward when
+    // too small (come closer), inward when overflowing (move back).
+    if (advice == ScaleAdvice.moveCloser || advice == ScaleAdvice.moveAway) {
+      final outward = advice == ScaleAdvice.moveCloser;
+      final r0 = diameter / 2;
+      final tick = Paint()
+        ..color = color.withValues(alpha: alpha)
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round;
+      for (var i = 0; i < 4; i++) {
+        final a = i * math.pi / 2 + math.pi / 4;
+        final dir = Offset(math.cos(a), math.sin(a));
+        final from = centre + dir * (outward ? r0 + 4 : r0 + 16);
+        final to = centre + dir * (outward ? r0 + 16 : r0 + 4);
+        canvas.drawLine(from, to, tick);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReticlePainter old) =>
+      old.anchor != anchor ||
+      old.advice != advice ||
+      old.orientation != orientation;
+}
+
+/// Shades the clipped cells of the ROI where they are and draws an arrow
+/// from the highlight away from the lesion: the direction to tilt so the
+/// reflection leaves the lesion. Replaces "adjust lighting".
+class _GlarePainter extends CustomPainter {
+  _GlarePainter({
+    required this.metrics,
+    required this.lesionCentre,
+    required this.orientation,
+    required this.emphasise,
+  });
+
+  final RoiFrameMetrics metrics;
+  final Offset? lesionCentre;
+  final int orientation;
+
+  /// True while glare is the arbiter's active problem: the arrow is drawn.
+  /// The shading is always drawn so the user sees a highlight forming
+  /// before it grows large enough to close the gate.
+  final bool emphasise;
+
+  static const Color _warm = Color(0xFFFFC857);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const n = RoiFrameMetrics.glareGridSize;
+    final cells = metrics.glareCells;
+    if (cells.length != n * n) return;
+
+    final cellW = size.width / n;
+    final cellH = size.height / n;
+    final fill = Paint();
+    for (var row = 0; row < n; row++) {
+      for (var col = 0; col < n; col++) {
+        final f = cells[row * n + col];
+        if (f < RoiFrameMetrics.glareCellVisible) continue;
+        // Cell centre in stream-ROI space → display space.
+        final d = roiToDisplay(
+          Offset((col + 0.5) / n, (row + 0.5) / n),
+          orientation,
+        );
+        final rect = Rect.fromCenter(
+          center: Offset(d.dx * size.width, d.dy * size.height),
+          width: cellW,
+          height: cellH,
+        );
+        fill.color = _warm.withValues(alpha: (0.25 + 0.5 * f).clamp(0.0, 0.75));
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(rect.deflate(0.5), const Radius.circular(3)),
+          fill,
+        );
+      }
+    }
+
+    final g = metrics.glareCentroid;
+    if (!emphasise || g == null) return;
+
+    // Arrow: from the highlight, away from the lesion (or away from the box
+    // centre when no lesion is segmented). Tilting the phone this way moves
+    // the reflection off the lesion.
+    final from = roiToDisplay(g, orientation);
+    final awayFrom = roiToDisplay(lesionCentre ?? const Offset(0.5, 0.5), orientation);
+    var dir = from - awayFrom;
+    if (dir.distance < 1e-3) dir = const Offset(0, -1);
+    dir = dir / dir.distance;
+
+    final start = Offset(from.dx * size.width, from.dy * size.height);
+    final len = size.width * 0.22;
+    final end = start + dir * len;
+    final stroke = Paint()
+      ..color = _warm
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(start, end, stroke);
+    final perp = Offset(-dir.dy, dir.dx);
+    final head = Path()
+      ..moveTo(end.dx, end.dy)
+      ..lineTo(end.dx - dir.dx * 10 + perp.dx * 6, end.dy - dir.dy * 10 + perp.dy * 6)
+      ..lineTo(end.dx - dir.dx * 10 - perp.dx * 6, end.dy - dir.dy * 10 - perp.dy * 6)
+      ..close();
+    canvas.drawPath(head, Paint()..color = _warm);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlarePainter old) =>
+      !identical(old.metrics, metrics) ||
+      old.lesionCentre != lesionCentre ||
+      old.orientation != orientation ||
+      old.emphasise != emphasise;
 }
 
 /// Sweeps the guide box border while the auto-capture dwell counts down, so

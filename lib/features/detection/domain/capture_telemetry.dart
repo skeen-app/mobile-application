@@ -4,8 +4,11 @@ import 'capture_quality.dart';
 import 'capture_roi.dart';
 import 'capture_scale.dart';
 import 'capture_stability.dart';
+import 'capture_standard.dart';
+import 'color_calibration.dart';
 import 'device_eligibility.dart';
 import 'roi_frame_metrics.dart';
+import 'skin_plane_pose.dart';
 
 /// Which arm of the paired study produced a capture.
 enum CaptureCondition {
@@ -88,6 +91,23 @@ class CaptureTelemetryRecord {
     required this.scalePassed,
     required this.wasReady,
     this.analysisId,
+    this.markerDetected = false,
+    this.markerType,
+    this.pxPerMm,
+    this.pxPerMmMarker,
+    this.pxPerMmTarget,
+    this.scaleRatio,
+    this.tiltDeg,
+    this.tiltGlobalDeg,
+    this.centreOffset,
+    this.poseAgeMs,
+    this.detectMs,
+    this.gateMarker = false,
+    this.gateTilt = false,
+    this.gateCentre = false,
+    this.colorCalibrated = false,
+    this.colorCalibration,
+    this.skinReferenceReflectance,
   });
 
   final String id;
@@ -127,6 +147,46 @@ class CaptureTelemetryRecord {
   /// fewer rejections is itself a result.
   final String? analysisId;
 
+  // ── Spatial registration (WP-5) — recorded in BOTH arms ──────────────
+  //
+  // The card is present in the control arm too (blinding), and the pose
+  // tracker runs there as well, so these describe the control captures
+  // just the same. That is what makes the continuous secondary outcomes —
+  // px/mm variance, tilt distribution — comparable across arms.
+
+  /// A valid, non-stale pose existed at the shutter instant.
+  final bool markerDetected;
+  final MarkerType? markerType;
+
+  /// Scale at the target disc (what the crop has), stream px per mm.
+  final double? pxPerMm;
+
+  /// Scale at the marker centre (the WP-1 validation quantity).
+  final double? pxPerMmMarker;
+
+  /// The target for this device's crop.
+  final double? pxPerMmTarget;
+  final double? scaleRatio;
+
+  /// Local tilt at the disc — the gated quantity.
+  final double? tiltDeg;
+
+  /// Normal vs. optical axis.
+  final double? tiltGlobalDeg;
+
+  /// Lesion-to-disc-centre distance in disc radii.
+  final double? centreOffset;
+
+  final int? poseAgeMs;
+  final int? detectMs;
+  final bool gateMarker;
+  final bool gateTilt;
+  final bool gateCentre;
+
+  final bool colorCalibrated;
+  final ColorCalibration? colorCalibration;
+  final double? skinReferenceReflectance;
+
   /// Builds a record from a readiness snapshot, so call sites cannot forget
   /// a field or let the stored vector drift from what the gate evaluated.
   factory CaptureTelemetryRecord.fromSnapshot({
@@ -143,14 +203,20 @@ class CaptureTelemetryRecord {
     required bool sharpnessCalibrating,
     DateTime? capturedAt,
     String? analysisId,
+    double? roiSidePx,
   }) {
+    final at = capturedAt ?? DateTime.now();
+    final pose = readiness.pose;
+    final gate = readiness.poseReadiness;
+    final disc = TargetDisc.centreMm();
+    final cal = readiness.colorCalibration;
     return CaptureTelemetryRecord(
       id: id,
       participantId: participantId,
       condition: condition,
       trigger: trigger,
       outcome: outcome,
-      capturedAt: capturedAt ?? DateTime.now(),
+      capturedAt: at,
       metrics: metrics,
       roiSideFraction: roi.sideFraction,
       sharpnessNormalized: sharpnessNormalized,
@@ -163,9 +229,27 @@ class CaptureTelemetryRecord {
       glarePassed: readiness.glareOk,
       colorPassed: readiness.colorNeutral,
       stabilityPassed: readiness.stability.isSteady,
-      scalePassed: readiness.scale.isAcceptable,
+      // From WP-3 the scale gate is the marker's px/mm, not the fill.
+      scalePassed: readiness.poseReadiness.scaleOk,
       wasReady: readiness.isReady,
       analysisId: analysisId,
+      markerDetected: gate.hasPose,
+      markerType: gate.hasPose ? pose?.markerType : null,
+      pxPerMm: pose?.pxPerMmAt(disc.dx, disc.dy),
+      pxPerMmMarker: pose?.pxPerMm,
+      pxPerMmTarget: roiSidePx == null ? null : targetPxPerMm(roiSidePx),
+      scaleRatio: gate.scaleRatio,
+      tiltDeg: gate.localTiltDeg,
+      tiltGlobalDeg: pose?.tiltDeg,
+      centreOffset: gate.centreOffset,
+      poseAgeMs: pose?.ageAt(at),
+      detectMs: pose?.detectionMs,
+      gateMarker: gate.hasPose,
+      gateTilt: gate.tiltOk,
+      gateCentre: gate.centredOk,
+      colorCalibrated: cal != null,
+      colorCalibration: cal,
+      skinReferenceReflectance: readiness.skinReferenceReflectance,
     );
   }
 
@@ -194,6 +278,28 @@ class CaptureTelemetryRecord {
         'gate_stability': stabilityPassed,
         'gate_scale': scalePassed,
         'gate_ready': wasReady,
+        // ── Spatial registration (WP-5) ──
+        'marker_detected': markerDetected,
+        'marker_type': markerType?.slug,
+        'px_per_mm': pxPerMm,
+        'px_per_mm_marker': pxPerMmMarker,
+        'px_per_mm_target': pxPerMmTarget,
+        'scale_ratio': scaleRatio,
+        'tilt_deg': tiltDeg,
+        'tilt_global_deg': tiltGlobalDeg,
+        'centre_offset': centreOffset,
+        'pose_age_ms': poseAgeMs,
+        'detect_ms': detectMs,
+        'gate_marker': gateMarker,
+        'gate_tilt': gateTilt,
+        'gate_centre': gateCentre,
+        'color_calibrated': colorCalibrated,
+        'gray_patch_luma': colorCalibration?.greyLuma,
+        'white_patch_luma': colorCalibration?.whiteLuma,
+        'wb_gain_r': colorCalibration?.gains[0],
+        'wb_gain_g': colorCalibration?.gains[1],
+        'wb_gain_b': colorCalibration?.gains[2],
+        'skin_reference_reflectance': skinReferenceReflectance,
       };
 }
 

@@ -3,6 +3,7 @@ import 'package:skeen/features/detection/application/hint_arbiter.dart';
 import 'package:skeen/features/detection/domain/capture_quality.dart';
 import 'package:skeen/features/detection/domain/capture_scale.dart';
 import 'package:skeen/features/detection/domain/capture_stability.dart';
+import 'package:skeen/features/detection/domain/pose_readiness.dart';
 import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
 
 void main() {
@@ -105,6 +106,12 @@ void main() {
       ColorCast cast = ColorCast.neutral,
       CaptureStability stability = const CaptureStability(angularSpeed: 0.02),
       CaptureScale? scale,
+      PoseReadiness poseReadiness = const PoseReadiness(
+        hasPose: true,
+        scaleRatio: 1.0,
+        localTiltDeg: 3,
+        centreOffset: 0.1,
+      ),
     }) =>
         CaptureReadiness(
           lighting: CaptureQuality.fromBrightness(luma),
@@ -113,6 +120,7 @@ void main() {
           colorCast: cast,
           stability: stability,
           scale: scale ?? CaptureScale.fromFill(0.5),
+          poseReadiness: poseReadiness,
         );
 
     test('opens only when every signal passes', () {
@@ -136,10 +144,28 @@ void main() {
         reason: 'shake',
       );
       expect(
-        build(scale: CaptureScale.fromFill(0.05)).isReady,
+        build(poseReadiness: PoseReadiness.absent).isReady,
         isFalse,
-        reason: 'lesion too small in frame',
+        reason: 'no marker pose',
       );
+      expect(
+        build(
+          poseReadiness: const PoseReadiness(
+            hasPose: true,
+            scaleRatio: 1.0,
+            localTiltDeg: 25,
+            centreOffset: 0.1,
+          ),
+        ).isReady,
+        isFalse,
+        reason: 'tilted 25°',
+      );
+    });
+
+    test('lesion size no longer gates — the standard is metric', () {
+      // A 2 mm lesion at the target px/mm is a small blob in the crop, and
+      // that is correct: same px/mm for every lesion, whatever its size.
+      expect(build(scale: CaptureScale.fromFill(0.05)).isReady, isTrue);
     });
 
     test('unmeasured signals hold the gate shut', () {
@@ -149,7 +175,14 @@ void main() {
         reason: 'no gyroscope reading yet',
       );
       expect(
-        build(scale: const CaptureScale.unknown()).isReady,
+        build(
+          poseReadiness: const PoseReadiness(
+            hasPose: true,
+            scaleRatio: 1.0,
+            localTiltDeg: 3,
+            centreOffset: null,
+          ),
+        ).isReady,
         isFalse,
         reason: 'no lesion segmented yet',
       );
@@ -185,8 +218,48 @@ void main() {
     test('the full checklist covers every gating signal', () {
       expect(
         build().checklist.map((i) => i.label),
-        ['Lighting', 'Focus', 'Glare', 'Colour', 'Steady', 'Framing'],
+        [
+          'Lighting', 'Focus', 'Glare', 'Colour', 'Steady',
+          'Marker', 'Scale', 'Tilt', 'Centred',
+        ],
       );
+    });
+
+    test('coaching order: light, card, glare, distance, level, centre, '
+        'still, focus, colour', () {
+      expect(build().failingKey, isNull);
+      expect(build(luma: 20, poseReadiness: PoseReadiness.absent).failingKey,
+          'lighting');
+      expect(build(poseReadiness: PoseReadiness.absent, glareOk: false)
+          .failingKey, 'marker');
+      expect(build(glareOk: false).failingKey, 'glare');
+      expect(
+        build(
+          poseReadiness: const PoseReadiness(
+            hasPose: true, scaleRatio: 0.7, localTiltDeg: 30, centreOffset: 0.9,
+          ),
+        ).failingKey,
+        'scale',
+      );
+      expect(
+        build(
+          poseReadiness: const PoseReadiness(
+            hasPose: true, scaleRatio: 1.0, localTiltDeg: 30, centreOffset: 0.9,
+          ),
+        ).failingKey,
+        'tilt',
+      );
+      expect(
+        build(
+          poseReadiness: const PoseReadiness(
+            hasPose: true, scaleRatio: 1.0, localTiltDeg: 3, centreOffset: 0.9,
+          ),
+        ).failingKey,
+        'centre',
+      );
+      expect(build(stability: CaptureStability.unknown).failingKey,
+          'stability');
+      expect(build(focus: false).failingKey, 'focus');
     });
 
     test('no user-facing copy promises a distance', () {

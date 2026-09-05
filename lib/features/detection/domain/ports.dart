@@ -2,10 +2,13 @@ import 'dart:typed_data';
 import 'dart:ui';
 
 import 'ar_geometry.dart';
+import 'camera_intrinsics.dart';
 import 'capture_roi.dart';
+import 'capture_stability.dart';
 import 'capture_telemetry.dart';
 import 'inference_result.dart';
 import 'lesion_analysis.dart';
+import 'luma_frame.dart';
 import 'roi_frame_metrics.dart';
 import 'scan_remote.dart';
 import 'skin_gate_result.dart';
@@ -134,6 +137,14 @@ abstract class ScanCameraServicePort {
   /// real preview↔frame mapping.
   Size? get previewFrameSize;
 
+  /// Downsampled luma frames for the marker detector, ~10 Hz, taken from the
+  /// SAME image stream as [metrics]. Never a second camera stream.
+  Stream<LumaFrame> get detectionFrames;
+
+  /// Sensor mounting orientation (0/90/180/270) as the camera plugin reports
+  /// it. Needed to map gyroscope axes into the stream's pixel frame.
+  int get sensorOrientationDegrees;
+
   /// Physical torch LED on the device.
   Future<void> setFlash(bool on);
 
@@ -167,6 +178,10 @@ abstract class StabilitySensorPort {
   /// shut rather than silently passing.
   Stream<double> get angularSpeed;
 
+  /// Raw samples in the device frame, for carrying a marker pose forward
+  /// between detections.
+  Stream<AngularVelocity> get angularVelocity;
+
   /// Whether this device actually has a usable gyroscope.
   ///
   /// Determined by subscribing and waiting for a sample: a gyroscope streams
@@ -177,6 +192,19 @@ abstract class StabilitySensorPort {
 
   Future<void> start();
   Future<void> stop();
+}
+
+/// Reads the camera's pinhole intrinsics from platform metadata.
+///
+/// Returns null when the platform cannot report them. That is a hard
+/// limitation — tilt is unmeasurable without a focal length — and it is
+/// surfaced as a named eligibility exclusion, not papered over with an
+/// assumed value.
+abstract class CameraIntrinsicsPort {
+  Future<CameraIntrinsics?> read({
+    required int frameWidth,
+    required int frameHeight,
+  });
 }
 
 /// Sidecar store for experimental capture telemetry.

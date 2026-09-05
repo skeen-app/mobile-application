@@ -6,7 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:skeen/features/detection/application/readiness_evaluator.dart';
 import 'package:skeen/features/detection/domain/capture_quality.dart';
 import 'package:skeen/features/detection/domain/capture_roi.dart';
+import 'package:skeen/features/detection/domain/capture_stability.dart';
 import 'package:skeen/features/detection/domain/capture_scale.dart';
+import 'package:skeen/features/detection/domain/luma_frame.dart';
 import 'package:skeen/features/detection/domain/ports.dart';
 import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
 
@@ -280,7 +282,9 @@ void main() {
       await evaluator.dispose();
     });
 
-    test('every signal green opens the gate', () async {
+    test('every image signal green still needs a marker pose', () async {
+      // WP-3: without a pose tracker there is no marker pose, and the
+      // physical gate is fail-closed. The image signals alone cannot open it.
       final evaluator = build();
       await evaluator.start();
 
@@ -290,7 +294,9 @@ void main() {
       sensor.emit(0.02);
       await settle();
 
-      expect(evaluator.current.isReady, isTrue);
+      expect(evaluator.current.isReady, isFalse);
+      expect(evaluator.current.failingKey, 'marker');
+      expect(evaluator.current.poseReadiness.hasPose, isFalse);
 
       await evaluator.dispose();
     });
@@ -325,6 +331,12 @@ class _FakeCamera implements ScanCameraServicePort {
 
   @override
   Future<bool> hasCamera() async => true;
+
+  @override
+  Stream<LumaFrame> get detectionFrames => const Stream.empty();
+
+  @override
+  int get sensorOrientationDegrees => 90;
 
   @override
   Future<void> initialize() async {}
@@ -364,6 +376,9 @@ class _FakeStabilitySensor implements StabilitySensorPort {
 
   @override
   Stream<double> get angularSpeed => _speeds.stream;
+
+  @override
+  Stream<AngularVelocity> get angularVelocity => const Stream.empty();
 
   @override
   Future<bool> isAvailable({Duration timeout = const Duration(seconds: 2)}) async =>

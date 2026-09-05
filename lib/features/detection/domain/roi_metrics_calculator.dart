@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import 'capture_roi.dart';
 import 'roi_frame_metrics.dart';
@@ -57,6 +58,14 @@ RoiFrameMetrics computeRoiMetrics({
   final grid = List<int>.filled(gridW * gridH, 0);
   final laplacian = RunningVariance();
 
+  // Glare, located: clipped samples binned into a coarse cell map over the
+  // ROI plus their centroid, so the overlay can paint the reflection where
+  // it is and point away from it instead of writing "adjust lighting".
+  const gc = RoiFrameMetrics.glareGridSize;
+  final glareHits = List<int>.filled(gc * gc, 0);
+  final glareTotals = List<int>.filled(gc * gc, 0);
+  var glareSumGx = 0, glareSumGy = 0;
+
   for (var gy = 0; gy < gridH; gy++) {
     final y = firstY + gy * stepY;
     for (var gx = 0; gx < gridW; gx++) {
@@ -64,7 +73,14 @@ RoiFrameMetrics computeRoiMetrics({
       final centre = luma(x, y);
       grid[gy * gridW + gx] = centre;
       sumLuma += centre;
-      if (centre >= RoiFrameMetrics.glareLumaCutoff) glareCount++;
+      final cell = (gy * gc ~/ gridH) * gc + (gx * gc ~/ gridW);
+      glareTotals[cell]++;
+      if (centre >= RoiFrameMetrics.glareLumaCutoff) {
+        glareCount++;
+        glareHits[cell]++;
+        glareSumGx += gx;
+        glareSumGy += gy;
+      }
 
       // 4-neighbour Laplacian on *adjacent* pixels. The grid decimates where
       // we measure, never what we measure: sampling the neighbours at the
@@ -101,12 +117,43 @@ RoiFrameMetrics computeRoiMetrics({
 
   final blob = _findLesionBlob(grid: grid, gridW: gridW, gridH: gridH);
 
+  // Grid cell → source pixel → position inside the ROI, normalized 0–1. The
+  // same centroid anchors the AR popup (over the model's square crop) and the
+  // live reticle (over the guide box), so it is expressed relative to the
+  // region it was measured in rather than to any particular frame.
+  Offset? centroid;
+  if (blob.centroidGx != null && blob.centroidGy != null) {
+    final px = firstX + blob.centroidGx! * stepX;
+    final py = firstY + blob.centroidGy! * stepY;
+    centroid = Offset(
+      ((px - bounds.left) / bounds.width).clamp(0.0, 1.0),
+      ((py - bounds.top) / bounds.height).clamp(0.0, 1.0),
+    );
+  }
+
+  final glareCells = List<double>.unmodifiable([
+    for (var i = 0; i < gc * gc; i++)
+      glareTotals[i] == 0 ? 0.0 : glareHits[i] / glareTotals[i],
+  ]);
+  Offset? glareCentroid;
+  if (glareCount > 0) {
+    final px = firstX + (glareSumGx / glareCount) * stepX;
+    final py = firstY + (glareSumGy / glareCount) * stepY;
+    glareCentroid = Offset(
+      ((px - bounds.left) / bounds.width).clamp(0.0, 1.0),
+      ((py - bounds.top) / bounds.height).clamp(0.0, 1.0),
+    );
+  }
+
   return RoiFrameMetrics(
     luma: meanLuma,
     sharpnessRaw: laplacian.value,
     glareFraction: glareCount / count,
+    glareCells: glareCells,
+    glareCentroid: glareCentroid,
     colorCast: colorCast,
     lesionFillFraction: blob.fillFraction,
+    lesionCentroid: centroid,
     skinReferenceLuma: blob.skinReference,
     lesionRelativeContrast: blob.relativeContrast,
     sampleCount: count,
@@ -177,15 +224,25 @@ class _BlobResult {
     required this.fillFraction,
     required this.skinReference,
     required this.relativeContrast,
+    required this.centroidGx,
+    required this.centroidGy,
   });
 
   const _BlobResult.none(this.skinReference)
       : fillFraction = -1,
-        relativeContrast = 0;
+        relativeContrast = 0,
+        centroidGx = null,
+        centroidGy = null;
 
   final double fillFraction;
   final double skinReference;
   final double relativeContrast;
+
+  /// Blob centroid in grid units (cell index space). Null when no blob.
+  /// Mapped back to ROI-normalized coordinates by the caller, which is the
+  /// only place that knows the grid→pixel mapping.
+  final double? centroidGx;
+  final double? centroidGy;
 }
 
 /// Segments the lesion by **local contrast against the surrounding skin**,
@@ -276,6 +333,8 @@ _BlobResult _findLesionBlob({
     fillFraction: diameter.clamp(0.0, 1.0),
     skinReference: reference,
     relativeContrast: (blobMedian - reference) / reference,
+    centroidGx: best.sumGx / best.area,
+    centroidGy: best.sumGy / best.area,
   );
 }
 

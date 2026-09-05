@@ -4,9 +4,12 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:skeen/features/detection/application/eligibility_checker.dart';
 import 'package:skeen/features/detection/application/experiment_session.dart';
+import 'package:skeen/features/detection/domain/camera_intrinsics.dart';
 import 'package:skeen/features/detection/domain/capture_roi.dart';
+import 'package:skeen/features/detection/domain/capture_stability.dart';
 import 'package:skeen/features/detection/domain/capture_telemetry.dart';
 import 'package:skeen/features/detection/domain/device_eligibility.dart';
+import 'package:skeen/features/detection/domain/luma_frame.dart';
 import 'package:skeen/features/detection/domain/ports.dart';
 import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
 
@@ -20,6 +23,7 @@ import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
 void main() {
   late _FakeCamera camera;
   late _FakeSensor sensor;
+  late _FakeIntrinsics intrinsics;
   late _FakeTelemetry telemetry;
   late ExperimentSession session;
   var nextId = 0;
@@ -27,9 +31,11 @@ void main() {
   EligibilityChecker build({
     bool hasCamera = true,
     bool hasGyroscope = true,
+    bool hasIntrinsics = true,
   }) {
     camera = _FakeCamera(present: hasCamera);
     sensor = _FakeSensor(present: hasGyroscope);
+    intrinsics = _FakeIntrinsics(present: hasIntrinsics);
     telemetry = _FakeTelemetry();
     session = const ExperimentSession(
       condition: CaptureCondition.guided,
@@ -39,6 +45,7 @@ void main() {
     return EligibilityChecker(
       camera: camera,
       stabilitySensor: sensor,
+      cameraIntrinsics: intrinsics,
       telemetry: telemetry,
       sessionReader: () => session,
       idFactory: () => 'rec-${nextId++}',
@@ -69,13 +76,32 @@ void main() {
     });
 
     test('every missing capability is reported, not just the first', () async {
-      final result =
-          await build(hasCamera: false, hasGyroscope: false).evaluate();
+      final result = await build(
+        hasCamera: false,
+        hasGyroscope: false,
+        hasIntrinsics: false,
+      ).evaluate();
 
       expect(result.missing, {
         EligibilityRequirement.camera,
         EligibilityRequirement.gyroscope,
+        EligibilityRequirement.cameraIntrinsics,
       });
+    });
+
+    test('no reported focal length is an exclusion — tilt is unmeasurable',
+        () async {
+      // WP-3: the physical gate needs intrinsics. A device that cannot
+      // report them would sit with the shutter locked; it is excluded on
+      // that named ground instead.
+      final result = await build(hasIntrinsics: false).evaluate();
+
+      expect(result.isEligible, isFalse);
+      expect(result.lacks(EligibilityRequirement.cameraIntrinsics), isTrue);
+      expect(
+        telemetry.eligibilityRows.single.toJson()['missing'],
+        ['camera_intrinsics'],
+      );
     });
 
     test('the hardware is probed once and cached', () async {
@@ -193,6 +219,12 @@ class _FakeCamera implements ScanCameraServicePort {
   }
 
   @override
+  Stream<LumaFrame> get detectionFrames => const Stream.empty();
+
+  @override
+  int get sensorOrientationDegrees => 90;
+
+  @override
   bool get isReady => present;
 
   @override
@@ -251,10 +283,34 @@ class _FakeSensor implements StabilitySensorPort {
   Stream<double> get angularSpeed => const Stream.empty();
 
   @override
+  Stream<AngularVelocity> get angularVelocity => const Stream.empty();
+
+  @override
   Future<void> start() async {}
 
   @override
   Future<void> stop() async {}
+}
+
+class _FakeIntrinsics implements CameraIntrinsicsPort {
+  _FakeIntrinsics({required this.present});
+
+  final bool present;
+
+  @override
+  Future<CameraIntrinsics?> read({
+    required int frameWidth,
+    required int frameHeight,
+  }) async =>
+      present
+          ? CameraIntrinsics(
+              focalPx: 800,
+              principalX: frameWidth / 2,
+              principalY: frameHeight / 2,
+              frameWidth: frameWidth,
+              frameHeight: frameHeight,
+            )
+          : null;
 }
 
 class _FakeTelemetry implements CaptureTelemetryPort {

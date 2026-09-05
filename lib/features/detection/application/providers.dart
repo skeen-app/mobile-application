@@ -4,6 +4,7 @@ import '../domain/device_eligibility.dart';
 import '../domain/ports.dart';
 import '../domain/triage_decision_policy.dart';
 import '../infrastructure/ar_session_service.dart';
+import '../infrastructure/camera_intrinsics_service.dart';
 import '../infrastructure/capture_cropper.dart';
 import '../infrastructure/capture_telemetry_repository.dart';
 import '../infrastructure/gyroscope_stability_service.dart';
@@ -15,6 +16,7 @@ import 'coordinate_translator.dart';
 import 'detection_result_mapper.dart';
 import 'eligibility_checker.dart';
 import 'experiment_session.dart';
+import 'pose_tracker.dart';
 import 'readiness_evaluator.dart';
 
 /// DI roots for the Detection bounded context. Kept in `application/` so
@@ -114,6 +116,7 @@ final eligibilityCheckerProvider = Provider<EligibilityChecker>((ref) {
   return EligibilityChecker(
     camera: ref.watch(scanCameraPortProvider),
     stabilitySensor: ref.watch(stabilitySensorProvider),
+    cameraIntrinsics: ref.watch(cameraIntrinsicsProvider),
     telemetry: ref.watch(captureTelemetryProvider),
     sessionReader: () => ref.read(experimentSessionProvider),
   );
@@ -134,7 +137,26 @@ final readinessEvaluatorProvider = Provider<ReadinessEvaluator>((ref) {
   final evaluator = ReadinessEvaluator(
     camera: ref.watch(scanCameraServiceProvider),
     stabilitySensor: ref.watch(stabilitySensorProvider),
+    poseTracker: ref.watch(poseTrackerProvider),
   );
   ref.onDispose(evaluator.dispose);
   return evaluator;
+});
+
+/// Platform camera intrinsics (focal length from Camera2 / AVFoundation
+/// metadata). Never estimated from the image.
+final cameraIntrinsicsProvider = Provider<CameraIntrinsicsPort>((ref) {
+  return const PlatformCameraIntrinsicsService();
+});
+
+/// Marker-based skin-plane pose. Provider-scoped like the evaluator: the
+/// worker isolate it owns is expensive to spawn and outlives the screen.
+final poseTrackerProvider = Provider<PoseTracker>((ref) {
+  final tracker = PoseTracker(
+    camera: ref.watch(scanCameraServiceProvider),
+    stabilitySensor: ref.watch(stabilitySensorProvider),
+    intrinsics: ref.watch(cameraIntrinsicsProvider),
+  );
+  ref.onDispose(tracker.dispose);
+  return tracker;
 });

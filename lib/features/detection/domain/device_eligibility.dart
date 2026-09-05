@@ -9,12 +9,19 @@ enum EligibilityRequirement {
   /// image, so without the sensor `CaptureStability` stays `unknown` and the
   /// fail-closed rule holds the shutter shut permanently.
   gyroscope,
+
+  /// The platform cannot report the camera's focal length. Tilt cannot be
+  /// resolved from the marker without it, so the physical gate can never
+  /// open: excluded on that named ground rather than handed an assumed
+  /// value.
+  cameraIntrinsics,
 }
 
 extension EligibilityRequirementX on EligibilityRequirement {
   String get slug => switch (this) {
         EligibilityRequirement.camera => 'camera',
         EligibilityRequirement.gyroscope => 'gyroscope',
+        EligibilityRequirement.cameraIntrinsics => 'camera_intrinsics',
       };
 }
 

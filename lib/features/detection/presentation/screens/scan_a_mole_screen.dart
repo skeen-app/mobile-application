@@ -157,6 +157,14 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     }
   }
 
+  /// Side of the analysed region in stream pixels — what fixes the target
+  /// px/mm for this device. Null before the camera reports its frame size.
+  double? _roiSidePx(CaptureRoi roi) {
+    final frame = _camera.previewFrameSize;
+    if (frame == null) return null;
+    return roi.boundsIn(frame.width.round(), frame.height.round()).width.toDouble();
+  }
+
   /// Whether the blocking guidance is actually in force right now.
   ///
   /// Fail-closed while the hardware probe is still running: an unresolved
@@ -395,6 +403,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
         sharpnessObservedMax: sharpnessObservedMax,
         sharpnessCalibrating: sharpnessCalibrating,
         analysisId: after.savedAnalysisId,
+        roiSidePx: _roiSidePx(roiAtShutter),
       ),
     );
   }
@@ -553,6 +562,8 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                     readiness: _readiness,
                     boxSide: _guideBoxSide,
                     autoCaptureProgress: _autoProgress,
+                    sensorOrientationDegrees: _camera.sensorOrientationDegrees,
+                    streamFrameSize: _camera.previewFrameSize,
                   ),
 
                 // Subtle disclaimer: AR is not available on this device.
@@ -909,6 +920,10 @@ class _StudyIneligibleScreen extends StatelessWidget {
         EligibilityRequirement.camera => 'No usable camera was found.'.tr,
         EligibilityRequirement.gyroscope =>
           'This device has no gyroscope, so camera shake cannot be measured.'
+              .tr,
+        EligibilityRequirement.cameraIntrinsics =>
+          'This device does not report its camera focal length, so the '
+                  'viewing angle cannot be measured.'
               .tr,
       };
 

@@ -9,6 +9,7 @@ import 'package:skeen/features/detection/domain/ar_geometry.dart';
 import 'package:skeen/features/detection/domain/capture_roi.dart';
 import 'package:skeen/features/detection/domain/inference_result.dart';
 import 'package:skeen/features/detection/domain/lesion_analysis.dart';
+import 'package:skeen/features/detection/domain/luma_frame.dart';
 import 'package:skeen/features/detection/domain/ports.dart';
 import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
 import 'package:skeen/features/detection/domain/scan_remote.dart';
@@ -154,6 +155,12 @@ class _FakeCamera implements ScanCameraServicePort {
 
   @override
   Future<bool> hasCamera() async => true;
+
+  @override
+  Stream<LumaFrame> get detectionFrames => const Stream.empty();
+
+  @override
+  int get sensorOrientationDegrees => 90;
 
   @override
   Stream<RoiFrameMetrics> get metrics => const Stream.empty();

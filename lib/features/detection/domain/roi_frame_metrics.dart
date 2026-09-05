@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
@@ -87,6 +88,9 @@ class RoiFrameMetrics {
     required this.sampleCount,
     this.skinReferenceLuma = 0,
     this.lesionRelativeContrast = 0,
+    this.lesionCentroid,
+    this.glareCells = const [],
+    this.glareCentroid,
   });
 
   /// Mean luma over the ROI, 0–255.
@@ -124,6 +128,29 @@ class RoiFrameMetrics {
   /// makes the gate's decision auditable after the fact.
   final double lesionRelativeContrast;
 
+  /// Centroid of the segmented lesion, normalized 0–1 **within the ROI** the
+  /// metrics were measured over. Null when no blob was segmented. Produced by
+  /// the same tone-invariant segmentation as [lesionFillFraction], so it
+  /// carries no Fitzpatrick bias — see `roi_metrics_calculator.dart`.
+  final Offset? lesionCentroid;
+
+  /// Fraction of clipped samples per cell of a [glareGridSize]² map over the
+  /// ROI, row-major. Lets the overlay shade the reflection **where it is**.
+  /// Empty when the frame was unusable.
+  final List<double> glareCells;
+
+  /// Centroid of the clipped samples, ROI-normalized; null when none.
+  final Offset? glareCentroid;
+
+  /// Cells per side of [glareCells]. 8 is coarse enough to be cheap and fine
+  /// enough that a highlight over the lesion is drawn on the lesion.
+  static const int glareGridSize = 8;
+
+  /// A cell whose share of clipped samples is at or above this is shaded.
+  /// Well under the 2% whole-ROI cap: the map shows the reflection before it
+  /// grows large enough to close the gate, which is the point of showing it.
+  static const double glareCellVisible = 0.15;
+
   bool get hasLesionEstimate => lesionFillFraction >= 0;
 
   /// A pixel this bright is clipped: no detail survives in it.
@@ -156,6 +183,10 @@ class RoiFrameMetrics {
         'lesion_fill_fraction': lesionFillFraction,
         'skin_reference_luma': skinReferenceLuma,
         'lesion_relative_contrast': lesionRelativeContrast,
+        'lesion_centroid_x': lesionCentroid?.dx,
+        'lesion_centroid_y': lesionCentroid?.dy,
+        'glare_centroid_x': glareCentroid?.dx,
+        'glare_centroid_y': glareCentroid?.dy,
         'sample_count': sampleCount,
       };
 }

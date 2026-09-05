@@ -7,9 +7,11 @@ import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
 
 import '../../../core/logger/app_logger.dart';
+import '../domain/capture_roi.dart';
 import '../domain/class_label.dart';
 import '../domain/inference_result.dart';
 import '../domain/ports.dart';
+import '../domain/roi_metrics_calculator.dart';
 
 class PreprocessResult {
   PreprocessResult({
@@ -89,7 +91,7 @@ class TfliteInferenceService implements InferenceServicePort {
     final sw = Stopwatch()..start();
 
     // Decode + crop-to-square-resize + centroid calculation off the main isolate.
-    final pre = await compute(_preprocess, jpegBytes);
+    final pre = await compute(preprocessCapture, jpegBytes);
     final preprocessMs = sw.elapsedMilliseconds;
 
     // Output buffer: float32 of shape [1, 6]. `List.filled(..., 0.0)
@@ -139,79 +141,51 @@ class TfliteInferenceService implements InferenceServicePort {
 /// Top-level so it can run in a worker isolate via `compute`.
 /// Performs 3 tasks:
 /// 1. Decodes the (already guide-cropped, square) JPEG.
-/// 2. Extracts a centered ROI, applies inverse luminance thresholding, and
-///    computes the centroid (center of mass) for AR anchoring.
+/// 2. Segments the lesion and takes its centroid for AR anchoring.
 /// 3. Resizes to 224×224 (bilinear) and produces the **float32**
 ///    `[1, 224, 224, 3]` tensor with RAW `[0, 255]` RGB values — NO
 ///    normalization (EfficientNet's rescaling lives inside the graph).
-PreprocessResult _preprocess(Uint8List jpegBytes) {
+///
+/// Public (and `@visibleForTesting`) only so the centroid path can be
+/// exercised end-to-end against synthetic captures; production code reaches
+/// it exclusively through [TfliteInferenceService.classify].
+@visibleForTesting
+PreprocessResult preprocessCapture(Uint8List jpegBytes) {
   final decoded = img.decodeImage(jpegBytes);
   if (decoded == null) {
     throw const FormatException('Could not decode capture as image');
   }
 
-  // ── 1. Fast Centroid Calculation (Contrast-based) ─────────────
-  Offset? centroid;
+  // ── 1. Lesion centroid for AR anchoring ───────────────────────
+  //
+  // Delegated to the shared, tone-invariant segmenter. This used to be a
+  // local "darkest pixel + absolute 10-level contrast guard" estimator — the
+  // exact estimator the readiness gate replaced for Fitzpatrick bias.
+  // Reflectance is multiplicative, so an absolute guard is ~4× stricter on
+  // skin at luma 55 than at luma 200: on dark skin the centroid was dropped
+  // and the popup fell back to the viewport centre. The gate was fixed first
+  // because it blocked captures; this anchors the result the dermatologists
+  // actually look at.
+  //
+  // Measured over the whole (square) crop, so the ROI-relative centroid the
+  // segmenter returns is remapped through the bounds it was measured in —
+  // which for a square input is the identity, but is kept explicit so a
+  // non-square input (crop flag off, unexpected aspect) cannot skew it.
   final w = decoded.width;
   final h = decoded.height;
+  final bounds = CaptureRoi.full.boundsIn(w, h);
+  final metrics = computeRoiMetrics(
+    bounds: bounds,
+    luma: (x, y) => decoded.getPixel(x, y).luminance.round(),
+  );
 
-  // We want a 300x300 crop from the center
-  final cropW = min(300, w);
-  final cropH = min(300, h);
-  final cropStartX = (w - cropW) ~/ 2;
-  final cropStartY = (h - cropH) ~/ 2;
-
-  final gray = img.grayscale(decoded);
-
-  // Pass 1: find mean and min luminance in the crop region
-  double sumLum = 0;
-  int countLum = 0;
-  int minLum = 255;
-  const step = 2; // sample every 2nd pixel for speed
-
-  for (var y = cropStartY; y < cropStartY + cropH; y += step) {
-    for (var x = cropStartX; x < cropStartX + cropW; x += step) {
-      final lum = gray.getPixel(x, y).luminance.round();
-      sumLum += lum;
-      countLum++;
-      if (lum < minLum) minLum = lum;
-    }
-  }
-
-  if (countLum > 0) {
-    final meanLum = sumLum / countLum;
-    // Threshold: pixels darker than (mean + darkest) / 2 are "lesion"
-    final threshold = ((meanLum + minLum) / 2).round();
-
-    // Pass 2: compute weighted centroid of dark pixels
-    double cx = 0, cy = 0;
-    int darkCount = 0;
-
-    for (var y = cropStartY; y < cropStartY + cropH; y += step) {
-      for (var x = cropStartX; x < cropStartX + cropW; x += step) {
-        final lum = gray.getPixel(x, y).luminance.round();
-        if (lum <= threshold) {
-          // Inverse threshold weight: darker = more weight
-          final weight = max(1, threshold - lum);
-          cx += x * weight;
-          cy += y * weight;
-          darkCount += weight;
-        }
-      }
-    }
-
-    if (darkCount >= 10) {
-      final absoluteCx = cx / darkCount;
-      final absoluteCy = cy / darkCount;
-      // Normalize relative to full original image (0.0 to 1.0)
-      final normX = absoluteCx / w;
-      final normY = absoluteCy / h;
-
-      // Only accept if it's within the ROI boundaries (sanity check)
-      if (normX >= 0.1 && normX <= 0.9 && normY >= 0.1 && normY <= 0.9) {
-        centroid = Offset(normX, normY);
-      }
-    }
+  Offset? centroid;
+  final inRoi = metrics.lesionCentroid;
+  if (inRoi != null) {
+    centroid = Offset(
+      (bounds.left + inRoi.dx * bounds.width) / w,
+      (bounds.top + inRoi.dy * bounds.height) / h,
+    );
   }
 
   // ── 2. Resize and Tensor Prep ─────────────────────────────────
@@ -254,5 +228,5 @@ PreprocessResult _preprocess(Uint8List jpegBytes) {
 }
 
 /// Model input edge length (EfficientNet-B0). Lives at top level so the
-/// isolate entry point [_preprocess] can read it.
+/// isolate entry point [preprocessCapture] can read it.
 const int _kInputSize = 224;

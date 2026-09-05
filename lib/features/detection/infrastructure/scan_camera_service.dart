@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/painting.dart';
 import 'package:image/image.dart' as img;
 
 import '../domain/capture_roi.dart';
+import '../domain/luma_frame.dart';
 import '../domain/ports.dart';
 import '../domain/roi_frame_metrics.dart';
 import '../domain/roi_metrics_calculator.dart';
@@ -24,8 +26,23 @@ class ScanCameraService implements ScanCameraServicePort {
   // the note there. Not `final` for that reason only.
   StreamController<RoiFrameMetrics> _metricsController =
       StreamController<RoiFrameMetrics>.broadcast();
+  StreamController<LumaFrame> _detectionController =
+      StreamController<LumaFrame>.broadcast();
 
   CaptureRoi _roi = CaptureRoi.full;
+  DateTime _lastDetectionFrame = DateTime.fromMillisecondsSinceEpoch(0);
+  int _sensorOrientation = 90;
+  double _zoom = 1.0;
+
+  /// Detection frames are emitted at this cadence — every 3rd frame at
+  /// 30 fps. The detector runs in a worker isolate and drops frames while
+  /// busy, so this is an upper bound, not a promise.
+  static const int detectionCadenceMs = 100;
+
+  /// Longest side of the downsampled luma frame handed to the detector.
+  /// 320 keeps a 30 mm marker at ~60 px across at 20 cm — five times the
+  /// detector's minimum — at a quarter of the pixels of the full stream.
+  static const int detectionMaxWidth = 320;
 
   CameraController? get controller => _controller;
   @override
@@ -50,6 +67,12 @@ class ScanCameraService implements ScanCameraServicePort {
   Size? get previewFrameSize => _controller?.value.previewSize;
 
   @override
+  Stream<LumaFrame> get detectionFrames => _detectionController.stream;
+
+  @override
+  int get sensorOrientationDegrees => _sensorOrientation;
+
+  @override
   Future<bool> hasCamera() async {
     try {
       final cameras = await availableCameras();
@@ -72,6 +95,9 @@ class ScanCameraService implements ScanCameraServicePort {
     if (_metricsController.isClosed) {
       _metricsController = StreamController<RoiFrameMetrics>.broadcast();
     }
+    if (_detectionController.isClosed) {
+      _detectionController = StreamController<LumaFrame>.broadcast();
+    }
 
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
@@ -81,6 +107,7 @@ class ScanCameraService implements ScanCameraServicePort {
       (c) => c.lensDirection == CameraLensDirection.back,
       orElse: () => cameras.first,
     );
+    _sensorOrientation = back.sensorOrientation;
 
     final controller = CameraController(
       back,
@@ -109,6 +136,11 @@ class ScanCameraService implements ScanCameraServicePort {
 
   void _onImage(CameraImage image) {
     final now = DateTime.now();
+    // The detector rides on the SAME stream as the metrics, at its own
+    // (faster) cadence. Opening a second image stream would double the
+    // camera's work and let the two drift out of sync.
+    _maybeEmitDetectionFrame(image, now);
+
     if (now.difference(_lastSample).inMilliseconds < 320) return;
     _lastSample = now;
 
@@ -131,6 +163,103 @@ class ScanCameraService implements ScanCameraServicePort {
       // A malformed frame must not kill the stream the gate depends on.
       if (kDebugMode) debugPrint('ROI metric sampling failed: $e');
     }
+  }
+
+  /// Packs a downsampled luma plane for the marker detector.
+  ///
+  /// Skipped entirely when nobody is listening, so the plain-camera path
+  /// pays nothing for it until a pose tracker subscribes.
+  void _maybeEmitDetectionFrame(CameraImage image, DateTime now) {
+    if (!_detectionController.hasListener || _detectionController.isClosed) {
+      return;
+    }
+    if (now.difference(_lastDetectionFrame).inMilliseconds <
+        detectionCadenceMs) {
+      return;
+    }
+    if (image.planes.isEmpty || image.width < 16 || image.height < 16) return;
+    _lastDetectionFrame = now;
+
+    final step = math.max(1, (image.width / detectionMaxWidth).ceil());
+    final w = image.width ~/ step;
+    final h = image.height ~/ step;
+    if (w < 16 || h < 16) return;
+
+    final plane = image.planes.first;
+    final bytes = plane.bytes;
+    final rowStride = plane.bytesPerRow;
+    final out = Uint8List(w * h);
+    // Colour at the same resolution, for the marker's reference patches.
+    Uint8List? rgb = Uint8List(w * h * 3);
+
+    try {
+      if (image.format.group == ImageFormatGroup.bgra8888) {
+        for (var y = 0; y < h; y++) {
+          final srcRow = (y * step) * rowStride;
+          for (var x = 0; x < w; x++) {
+            final i = srcRow + (x * step) * 4;
+            if (i + 2 >= bytes.length) break;
+            final o = y * w + x;
+            out[o] = (0.299 * bytes[i + 2] +
+                    0.587 * bytes[i + 1] +
+                    0.114 * bytes[i])
+                .round();
+            rgb[o * 3] = bytes[i + 2];
+            rgb[o * 3 + 1] = bytes[i + 1];
+            rgb[o * 3 + 2] = bytes[i];
+          }
+        }
+      } else {
+        final pixelStride = plane.bytesPerPixel ?? 1;
+        final hasChroma = image.planes.length >= 3;
+        if (!hasChroma) rgb = null;
+        final uBytes = hasChroma ? image.planes[1].bytes : null;
+        final vBytes = hasChroma ? image.planes[2].bytes : null;
+        final uvRowStride = hasChroma ? image.planes[1].bytesPerRow : 0;
+        final uvPixelStride =
+            hasChroma ? (image.planes[1].bytesPerPixel ?? 1) : 0;
+        for (var y = 0; y < h; y++) {
+          final sy = y * step;
+          final srcRow = sy * rowStride;
+          for (var x = 0; x < w; x++) {
+            final sx = x * step;
+            final i = srcRow + sx * pixelStride;
+            if (i >= bytes.length) break;
+            final o = y * w + x;
+            final luma = bytes[i];
+            out[o] = luma;
+            if (rgb != null) {
+              final uv = (sy >> 1) * uvRowStride + (sx >> 1) * uvPixelStride;
+              if (uv >= 0 && uv < uBytes!.length && uv < vBytes!.length) {
+                final u = uBytes[uv] - 128;
+                final v = vBytes[uv] - 128;
+                rgb[o * 3] = (luma + 1.402 * v).round().clamp(0, 255);
+                rgb[o * 3 + 1] =
+                    (luma - 0.344136 * u - 0.714136 * v).round().clamp(0, 255);
+                rgb[o * 3 + 2] = (luma + 1.772 * u).round().clamp(0, 255);
+              } else {
+                rgb[o * 3] = luma;
+                rgb[o * 3 + 1] = luma;
+                rgb[o * 3 + 2] = luma;
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('Detection frame packing failed: $e');
+      return;
+    }
+
+    _detectionController.add(LumaFrame(
+      luma: out,
+      width: w,
+      height: h,
+      capturedAt: now,
+      scaleToFull: step.toDouble(),
+      zoom: _zoom,
+      rgb: rgb,
+    ));
   }
 
   /// BGRA8888 (iOS). Colour is directly addressable. Luma uses the Rec. 601
@@ -332,6 +461,7 @@ class ScanCameraService implements ScanCameraServicePort {
       final max = await controller.getMaxZoomLevel();
       final clamped = level.clamp(min, max);
       await controller.setZoomLevel(clamped);
+      _zoom = clamped;
     } catch (e, st) {
       if (kDebugMode) debugPrint('Zoom failed at $level: $e\n$st');
     }
@@ -380,6 +510,7 @@ class ScanCameraService implements ScanCameraServicePort {
     await _controller?.dispose();
     _controller = null;
     await _metricsController.close();
+    await _detectionController.close();
   }
 }
 

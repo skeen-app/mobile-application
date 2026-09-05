@@ -86,5 +86,19 @@ This project is optimized for a hybrid AI-Collaborative workflow:
 Claude Code: Used for architectural scaffolding, dependency orchestration, and terminal-based automation via custom Skills.
 Cursor: Used for rapid UI development (Atomic Widgets) and business logic refinement using the docs/design/SDD_FRONTEND.md as the primary blueprint.
 
+## Study protocol & device eligibility
+
+The capture module doubles as the intervention arm of a paired study. The
+printed reference card, its placement instruction (identical in both arms)
+and the telemetry schema are documented in `docs/protocol/PROTOCOLO_MARCADOR.md`;
+the card itself is generated from code with
+`flutter test tool/generate_marker_card.dart`.
+
+**Emulators and simulators are reported as NOT ELIGIBLE** on the scan
+screen: they have no gyroscope and generally do not report the camera's
+focal length, both of which the guided arm measures. This is fail-closed
+behaviour, not a bug — test the guided arm on a physical device. The
+exclusion (and every eligible session) is written to the telemetry sidecar.
+
 ## Medical Disclaimer
 skeen is a triage support tool and NOT a diagnostic system. It does not replace professional medical advice, diagnosis, or treatment. Always seek the advice of a dermatologist or other qualified health provider with any questions regarding a medical condition.

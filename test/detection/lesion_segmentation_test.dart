@@ -29,13 +29,15 @@ LumaSampler _frame({
   required int skin,
   double lesionRatio = 1.0,
   double lesionDiameter = 0,
+  double lesionCentreX = 0.5,
+  double lesionCentreY = 0.5,
   double hairRatio = 0.45,
   double hairWidthFraction = 0,
   double hairCentreX = 0.5,
   double Function(double nx)? illumination,
 }) {
-  final cx = _bounds.left + _bounds.width / 2;
-  final cy = _bounds.top + _bounds.height / 2;
+  final cx = _bounds.left + lesionCentreX * _bounds.width;
+  final cy = _bounds.top + lesionCentreY * _bounds.height;
   final lesionRadius = lesionDiameter * _bounds.width / 2;
   final hairHalfWidth = hairWidthFraction * _bounds.width / 2;
   final hairX = _bounds.left + hairCentreX * _bounds.width;
@@ -187,6 +189,72 @@ void main() {
             ScaleAdvice.moveAway,
             reason: 'skin $skin');
       }
+    });
+  });
+
+  group('centroid (WP-0 — anchors the AR popup)', () {
+    test('recovers a known off-centre position identically at every tone', () {
+      // The popup used to be anchored by a "darkest pixel + absolute guard"
+      // estimator that dropped the centroid on dark skin, so the label fell
+      // back to the viewport centre exactly for the participants the thesis
+      // is about. Same segmenter now, same contract: identical on all tones.
+      final centroids = <int, Offset>{};
+      for (final skin in [kLightSkin, kMediumSkin, kDarkSkin]) {
+        final metrics = _measure(_frame(
+          skin: skin,
+          lesionRatio: 0.6,
+          lesionDiameter: 0.3,
+          lesionCentreX: 0.62,
+          lesionCentreY: 0.40,
+        ));
+
+        expect(metrics.lesionCentroid, isNotNull, reason: 'skin $skin');
+        centroids[skin] = metrics.lesionCentroid!;
+        expect(metrics.lesionCentroid!.dx, closeTo(0.62, 0.03),
+            reason: 'skin $skin');
+        expect(metrics.lesionCentroid!.dy, closeTo(0.40, 0.03),
+            reason: 'skin $skin');
+      }
+
+      final xs = centroids.values.map((c) => c.dx).toList();
+      final ys = centroids.values.map((c) => c.dy).toList();
+      expect(xs.reduce(math.max) - xs.reduce(math.min), lessThan(0.02));
+      expect(ys.reduce(math.max) - ys.reduce(math.min), lessThan(0.02));
+    });
+
+    test('a faint lesion on dark skin still yields a centroid', () {
+      // The specific case the old estimator lost (absolute gap of 8 < 10).
+      final metrics = _measure(_frame(
+        skin: kDarkSkin,
+        lesionRatio: 0.85,
+        lesionDiameter: 0.4,
+        lesionCentreX: 0.45,
+        lesionCentreY: 0.55,
+      ));
+
+      expect(metrics.lesionCentroid, isNotNull);
+      expect(metrics.lesionCentroid!.dx, closeTo(0.45, 0.03));
+      expect(metrics.lesionCentroid!.dy, closeTo(0.55, 0.03));
+    });
+
+    test('is null when nothing was segmented — never a default centre', () {
+      final metrics = _measure(_frame(skin: kMediumSkin));
+
+      expect(metrics.lesionCentroid, isNull);
+    });
+
+    test('a hypopigmented lesion is anchored by the same path', () {
+      final metrics = _measure(_frame(
+        skin: kDarkSkin,
+        lesionRatio: 1.6,
+        lesionDiameter: 0.3,
+        lesionCentreX: 0.58,
+        lesionCentreY: 0.58,
+      ));
+
+      expect(metrics.lesionCentroid, isNotNull);
+      expect(metrics.lesionCentroid!.dx, closeTo(0.58, 0.03));
+      expect(metrics.lesionCentroid!.dy, closeTo(0.58, 0.03));
     });
   });
 

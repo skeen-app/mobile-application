@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
 /// How still the phone is, measured with the gyroscope.
@@ -35,4 +37,24 @@ class CaptureStability {
   String toString() => isKnown
       ? 'CaptureStability(${angularSpeed.toStringAsFixed(3)} rad/s)'
       : 'CaptureStability(unknown)';
+}
+
+/// One raw gyroscope sample in the **device** frame (x right, y up the
+/// phone, z out of the screen), rad/s. Consumed by the pose tracker to carry
+/// a marker pose forward between detections.
+@immutable
+class AngularVelocity {
+  const AngularVelocity({
+    required this.x,
+    required this.y,
+    required this.z,
+    required this.at,
+  });
+
+  final double x;
+  final double y;
+  final double z;
+  final DateTime at;
+
+  double get magnitude => math.sqrt(x * x + y * y + z * z);
 }

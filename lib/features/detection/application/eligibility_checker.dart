@@ -23,6 +23,7 @@ class EligibilityChecker {
   EligibilityChecker({
     required ScanCameraServicePort camera,
     required StabilitySensorPort stabilitySensor,
+    required CameraIntrinsicsPort cameraIntrinsics,
     required CaptureTelemetryPort telemetry,
     required ExperimentSession Function() sessionReader,
     Duration gyroscopeProbeTimeout = const Duration(seconds: 2),
@@ -30,6 +31,7 @@ class EligibilityChecker {
     DateTime Function()? clock,
   })  : _camera = camera,
         _stabilitySensor = stabilitySensor,
+        _cameraIntrinsics = cameraIntrinsics,
         _telemetry = telemetry,
         _sessionReader = sessionReader,
         _gyroscopeProbeTimeout = gyroscopeProbeTimeout,
@@ -38,6 +40,7 @@ class EligibilityChecker {
 
   final ScanCameraServicePort _camera;
   final StabilitySensorPort _stabilitySensor;
+  final CameraIntrinsicsPort _cameraIntrinsics;
   final CaptureTelemetryPort _telemetry;
   final ExperimentSession Function() _sessionReader;
   final Duration _gyroscopeProbeTimeout;
@@ -65,6 +68,12 @@ class EligibilityChecker {
       timeout: _gyroscopeProbeTimeout,
     )) {
       missing.add(EligibilityRequirement.gyroscope);
+    }
+    // Probed at a nominal stream size: availability does not depend on the
+    // resolution, only the pixel value does.
+    if (await _cameraIntrinsics.read(frameWidth: 1280, frameHeight: 720) ==
+        null) {
+      missing.add(EligibilityRequirement.cameraIntrinsics);
     }
 
     return DeviceEligibility(missing: missing);

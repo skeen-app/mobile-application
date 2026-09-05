@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
+import '../domain/capture_stability.dart';
 import '../domain/ports.dart';
 
 /// Measures camera shake with the gyroscope.
@@ -27,10 +28,15 @@ class GyroscopeStabilityService implements StabilitySensorPort {
   StreamSubscription<GyroscopeEvent>? _sub;
   final StreamController<double> _controller =
       StreamController<double>.broadcast();
+  final StreamController<AngularVelocity> _velocityController =
+      StreamController<AngularVelocity>.broadcast();
   double? _ema;
 
   @override
   Stream<double> get angularSpeed => _controller.stream;
+
+  @override
+  Stream<AngularVelocity> get angularVelocity => _velocityController.stream;
 
   @override
   Future<bool> isAvailable({
@@ -98,6 +104,14 @@ class GyroscopeStabilityService implements StabilitySensorPort {
         : previous + smoothing * (magnitude - previous);
     _ema = next;
     if (!_controller.isClosed) _controller.add(next);
+    if (!_velocityController.isClosed) {
+      _velocityController.add(AngularVelocity(
+        x: event.x,
+        y: event.y,
+        z: event.z,
+        at: DateTime.now(),
+      ));
+    }
   }
 
   @override
@@ -110,5 +124,6 @@ class GyroscopeStabilityService implements StabilitySensorPort {
   Future<void> dispose() async {
     await stop();
     await _controller.close();
+    await _velocityController.close();
   }
 }

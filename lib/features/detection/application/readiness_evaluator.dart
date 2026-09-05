@@ -3,8 +3,14 @@ import 'dart:async';
 import '../domain/capture_quality.dart';
 import '../domain/capture_scale.dart';
 import '../domain/capture_stability.dart';
+import '../domain/color_calibration.dart';
 import '../domain/ports.dart';
+import '../domain/display_mapping.dart';
+import '../domain/pose_readiness.dart';
 import '../domain/roi_frame_metrics.dart';
+import '../domain/skin_plane_pose.dart';
+import 'anchor_smoother.dart';
+import 'pose_tracker.dart';
 import 'sharpness_calibrator.dart';
 
 /// Folds the ROI metric stream and the gyroscope into a single
@@ -30,13 +36,22 @@ class ReadinessEvaluator {
     required StabilitySensorPort stabilitySensor,
     SharpnessCalibrator? calibrator,
     DateTime Function()? clock,
+    PoseTracker? poseTracker,
+    AnchorSmoother? anchorSmoother,
   })  : _camera = camera,
         _stabilitySensor = stabilitySensor,
+        _poseTracker = poseTracker,
         _now = clock ?? DateTime.now,
-        calibrator = calibrator ?? SharpnessCalibrator();
+        calibrator = calibrator ?? SharpnessCalibrator(),
+        anchor = anchorSmoother ?? AnchorSmoother(clock: clock);
 
   final ScanCameraServicePort _camera;
   final StabilitySensorPort _stabilitySensor;
+
+  /// Marker-based pose source. Optional so surfaces without a marker
+  /// protocol (and the existing tests) keep working; when present, its pose
+  /// is folded into every [CaptureReadiness] this evaluator emits.
+  final PoseTracker? _poseTracker;
 
   /// Injectable so the multi-second "cannot focus" rule can be exercised in
   /// a test without the test actually taking multiple seconds.
@@ -46,11 +61,19 @@ class ReadinessEvaluator {
   /// each shot — the thresholds have to be re-derivable from field data.
   final SharpnessCalibrator calibrator;
 
+  /// Smooths the lesion centroid between ~3 Hz measurements and carries it
+  /// forward by the gyroscope so the reticle tracks instead of stepping.
+  final AnchorSmoother anchor;
+
   final StreamController<CaptureReadiness> _readinessController =
       StreamController<CaptureReadiness>.broadcast();
 
   StreamSubscription<RoiFrameMetrics>? _metricsSub;
   StreamSubscription<double>? _stabilitySub;
+  StreamSubscription<SkinPlanePose?>? _poseSub;
+  StreamSubscription<AngularVelocity>? _velocitySub;
+  SkinPlanePose? _pose;
+  AngularVelocity? _lastVelocity;
 
   CaptureQuality _lighting = CaptureQuality.initial;
   CaptureStability _stability = CaptureStability.unknown;
@@ -72,14 +95,44 @@ class ReadinessEvaluator {
   /// Last raw measurement, for capture telemetry.
   RoiFrameMetrics get lastMetrics => _metrics;
 
+  /// The tracker, for telemetry and eligibility (intrinsics availability).
+  PoseTracker? get poseTracker => _poseTracker;
+
   CaptureReadiness get current => CaptureReadiness(
         lighting: _lighting,
         focus: calibrator.isSharp,
         glareOk: _glareOk,
-        colorCast: _metrics.colorCast,
+        // With the marker's patches readable, the colour check runs on the
+        // white-balanced colour — a cast against ground truth. Without
+        // them, the relative check stays in force.
+        colorCast: _calibration?.correct(_metrics.colorCast) ??
+            _metrics.colorCast,
         stability: _stability,
         scale: _scale,
+        pose: _pose,
+        anchor: anchor.current,
+        metrics: _metrics,
+        poseReadiness: _poseReadiness(),
+        colorCalibration: _calibration,
       );
+
+  ColorCalibration? get _calibration => _poseTracker?.calibration;
+
+  /// Scale, local tilt and centring from the marker pose — the physical
+  /// gate. Needs the ROI in stream pixels (its side fixes the target px/mm)
+  /// and the segmenter's centroid; missing either leaves it closed.
+  PoseReadiness _poseReadiness() {
+    final frame = _camera.previewFrameSize;
+    if (frame == null) return PoseReadiness.absent;
+    final roi = _camera.roi.boundsIn(frame.width.round(), frame.height.round());
+    return PoseReadiness.evaluate(
+      pose: _pose,
+      roi: roi,
+      now: _now(),
+      lesionCentroidRoi:
+          _metrics.hasLesionEstimate ? _metrics.lesionCentroid : null,
+    );
+  }
 
   /// Subscribes to the sensor streams.
   ///
@@ -98,6 +151,8 @@ class ReadinessEvaluator {
     _unsharpMs = 0;
     _scale = const CaptureScale.unknown();
     _stability = CaptureStability.unknown;
+    anchor.reset();
+    _lastVelocity = null;
 
     await _stabilitySensor.start();
 
@@ -106,6 +161,17 @@ class ReadinessEvaluator {
       _stability = CaptureStability(angularSpeed: speed);
       _emit();
     });
+    _velocitySub = _stabilitySensor.angularVelocity.listen(_onVelocity);
+
+    final tracker = _poseTracker;
+    if (tracker != null) {
+      _pose = null;
+      await tracker.start();
+      _poseSub = tracker.pose.listen((p) {
+        _pose = p;
+        _emit();
+      });
+    }
   }
 
   void _onMetrics(RoiFrameMetrics metrics) {
@@ -143,6 +209,40 @@ class ReadinessEvaluator {
       cannotFocus: cannotFocus,
     );
 
+    final c = metrics.lesionCentroid;
+    if (c != null && metrics.hasLesionEstimate) {
+      anchor.measure(
+        centre: c,
+        diameterFraction: metrics.lesionFillFraction,
+        at: now,
+      );
+    }
+
+    _emit();
+  }
+
+  /// Carries the reticle forward through the phone's rotation between
+  /// measurements. Needs the focal length (from platform metadata via the
+  /// pose tracker) and the ROI in stream pixels; without either it does
+  /// nothing and the reticle simply holds until the next measurement.
+  void _onVelocity(AngularVelocity v) {
+    final previous = _lastVelocity;
+    _lastVelocity = v;
+    if (previous == null || anchor.current == null) return;
+    final k = _poseTracker?.intrinsicsAtZoom;
+    final frame = _camera.previewFrameSize;
+    if (k == null || frame == null) return;
+
+    final dt = v.at.difference(previous.at).inMicroseconds / 1e6;
+    if (dt <= 0 || dt > 0.25) return;
+    final omega = gyroToStreamFrame(v, _camera.sensorOrientationDegrees);
+    final r = Vec3.rodrigues([omega[0] * dt, omega[1] * dt, omega[2] * dt]);
+
+    anchor.predict(
+      rotationTransposed: Vec3.transpose(r),
+      intrinsics: k,
+      roi: _camera.roi.boundsIn(frame.width.round(), frame.height.round()),
+    );
     _emit();
   }
 
@@ -155,12 +255,17 @@ class ReadinessEvaluator {
   Future<void> _cancelSubscriptions() async {
     await _metricsSub?.cancel();
     await _stabilitySub?.cancel();
+    await _poseSub?.cancel();
+    await _velocitySub?.cancel();
     _metricsSub = null;
     _stabilitySub = null;
+    _poseSub = null;
+    _velocitySub = null;
   }
 
   Future<void> stop() async {
     await _cancelSubscriptions();
+    await _poseTracker?.stop();
     await _stabilitySensor.stop();
   }
 

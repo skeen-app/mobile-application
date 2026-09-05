@@ -3,8 +3,14 @@ import 'package:skeen/features/detection/domain/capture_quality.dart';
 import 'package:skeen/features/detection/domain/capture_roi.dart';
 import 'package:skeen/features/detection/domain/capture_scale.dart';
 import 'package:skeen/features/detection/domain/capture_stability.dart';
+import 'package:skeen/features/detection/application/pose_estimator.dart';
+import 'package:skeen/features/detection/domain/camera_intrinsics.dart';
+import 'package:skeen/features/detection/domain/capture_standard.dart';
 import 'package:skeen/features/detection/domain/capture_telemetry.dart';
+import 'package:skeen/features/detection/domain/color_calibration.dart';
+import 'package:skeen/features/detection/domain/pose_readiness.dart';
 import 'package:skeen/features/detection/domain/roi_frame_metrics.dart';
+import 'package:skeen/features/detection/domain/skin_plane_pose.dart';
 
 /// The telemetry row is the study's raw data. If a field is missing or drifts
 /// from what the gate actually evaluated, the thresholds can never be
@@ -28,6 +34,12 @@ void main() {
     colorCast: metrics.colorCast,
     stability: const CaptureStability(angularSpeed: 0.04),
     scale: CaptureScale.fromFill(0.48),
+    poseReadiness: const PoseReadiness(
+      hasPose: true,
+      scaleRatio: 1.02,
+      localTiltDeg: 4,
+      centreOffset: 0.08,
+    ),
   );
 
   CaptureTelemetryRecord build({
@@ -172,6 +184,120 @@ void main() {
     expect(json['scale_fill_fraction'], isNull);
     expect(json['scale_advice'], 'unknown');
     expect(json['gate_ready'], isFalse);
+  });
+
+  group('spatial registration (WP-5)', () {
+    SkinPlanePose pose() => estimatePose(
+          corners: const [
+            Offset(220, 80),
+            Offset(420, 80),
+            Offset(420, 280),
+            Offset(220, 280),
+          ],
+          intrinsics: const CameraIntrinsics(
+            focalPx: 800,
+            principalX: 320,
+            principalY: 180,
+            frameWidth: 640,
+            frameHeight: 360,
+          ),
+          detectedAt: DateTime.utc(2026, 3, 3, 12, 29, 59, 850),
+          detectionMs: 9,
+        )!;
+
+    CaptureReadiness withPose() => CaptureReadiness(
+          lighting: CaptureQuality.fromBrightness(143.5),
+          focus: true,
+          stability: const CaptureStability(angularSpeed: 0.04),
+          scale: CaptureScale.fromFill(0.48),
+          metrics: metrics,
+          pose: pose(),
+          poseReadiness: const PoseReadiness(
+            hasPose: true,
+            scaleRatio: 0.98,
+            localTiltDeg: 4.2,
+            centreOffset: 0.11,
+          ),
+          colorCalibration: const ColorCalibration(
+            gains: [0.97, 1.0, 1.06],
+            greyLumaLinear: 0.18,
+            greyLuma: 117,
+            whiteLuma: 240,
+          ),
+        );
+
+    test('without a marker every spatial field is null or false — never a '
+        'plausible value', () {
+      final noMarker = CaptureReadiness(
+        lighting: CaptureQuality.fromBrightness(143.5),
+        focus: true,
+        stability: const CaptureStability(angularSpeed: 0.04),
+        scale: CaptureScale.fromFill(0.48),
+        metrics: metrics,
+      );
+      final json = build(withReadiness: noMarker).toJson();
+
+      expect(json['marker_detected'], isFalse);
+      expect(json['marker_type'], isNull);
+      expect(json['px_per_mm'], isNull);
+      expect(json['tilt_deg'], isNull);
+      expect(json['pose_age_ms'], isNull);
+      expect(json['color_calibrated'], isFalse);
+      expect(json['gray_patch_luma'], isNull);
+      expect(json['skin_reference_reflectance'], isNull);
+      expect(json['gate_marker'], isFalse);
+      expect(json['gate_tilt'], isFalse);
+      expect(json['gate_centre'], isFalse);
+    });
+
+    test('with a marker the full spatial vector is recorded', () {
+      final json = build(withReadiness: withPose()).toJson();
+
+      expect(json['marker_detected'], isTrue);
+      expect(json['marker_type'], 'aruco');
+      // 200 px across 30 mm at the marker; the disc reads the same scale
+      // fronto-parallel.
+      expect(json['px_per_mm_marker'], closeTo(200 / 30, 0.05));
+      expect(json['px_per_mm'], closeTo(200 / 30, 0.1));
+      expect(json['scale_ratio'], 0.98);
+      expect(json['tilt_deg'], 4.2);
+      expect(json['tilt_global_deg'], lessThan(1.0));
+      expect(json['centre_offset'], 0.11);
+      expect(json['pose_age_ms'], 150, reason: 'shutter 150 ms after detection');
+      expect(json['detect_ms'], 9);
+      expect(json['gate_marker'], isTrue);
+      expect(json['gate_tilt'], isTrue);
+      expect(json['gate_centre'], isTrue);
+      expect(json['gate_scale'], isTrue, reason: 'the px/mm gate now');
+      expect(json['color_calibrated'], isTrue);
+      expect(json['gray_patch_luma'], 117);
+      expect(json['white_patch_luma'], 240);
+      expect(json['wb_gain_b'], 1.06);
+      expect(json['skin_reference_reflectance'], isNotNull);
+    });
+
+    test('the target px/mm is recorded when the crop side is known', () {
+      final json = CaptureTelemetryRecord.fromSnapshot(
+        id: 'rec-2',
+        participantId: 'P014',
+        condition: CaptureCondition.control,
+        trigger: CaptureTrigger.manual,
+        outcome: CaptureOutcome.saved,
+        readiness: withPose(),
+        metrics: metrics,
+        roi: const CaptureRoi(sideFraction: 0.55),
+        sharpnessNormalized: 0.8,
+        sharpnessObservedMax: 3000,
+        sharpnessCalibrating: false,
+        capturedAt: DateTime.utc(2026, 3, 3, 12, 30),
+        roiSidePx: 198,
+      ).toJson();
+
+      expect(json['px_per_mm_target'], closeTo(targetPxPerMm(198), 1e-9));
+      // Recorded in the CONTROL arm just the same.
+      expect(json['condition'], 'control');
+      expect(json['marker_detected'], isTrue);
+    });
   });
 
   test('timestamps are UTC ISO-8601 so rows from any device collate', () {
