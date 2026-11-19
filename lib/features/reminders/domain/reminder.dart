@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 /// One scheduled reminder. Local-only — alarms live with the device.
@@ -104,11 +105,11 @@ enum ReminderType {
   String get displayLabel {
     switch (this) {
       case ReminderType.newScan:
-        return 'Scan a new mole';
+        return 'Scan a new mole'.tr;
       case ReminderType.rescan:
-        return 'Re-scan a previous mole';
+        return 'Re-scan a previous mole'.tr;
       case ReminderType.selfExamination:
-        return 'Self-examination';
+        return 'Self-examination'.tr;
     }
   }
 
@@ -126,11 +127,11 @@ enum ReminderType {
   String get description {
     switch (this) {
       case ReminderType.newScan:
-        return 'Capture a new lesion you want to track.';
+        return 'Capture a new lesion you want to track.'.tr;
       case ReminderType.rescan:
-        return 'Re-capture an existing lesion to compare changes.';
+        return 'Re-capture an existing lesion to compare changes.'.tr;
       case ReminderType.selfExamination:
-        return 'A nudge to visually check your skin from head to toe.';
+        return 'A nudge to visually check your skin from head to toe.'.tr;
     }
   }
 }
@@ -143,11 +144,11 @@ enum ReminderRepeat {
   String get displayLabel {
     switch (this) {
       case ReminderRepeat.none:
-        return 'One-time';
+        return 'One-time'.tr;
       case ReminderRepeat.monthly:
-        return 'Every month';
+        return 'Every month'.tr;
       case ReminderRepeat.quarterly:
-        return 'Every 3 months';
+        return 'Every 3 months'.tr;
     }
   }
 }

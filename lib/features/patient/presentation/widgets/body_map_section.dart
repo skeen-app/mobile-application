@@ -363,7 +363,7 @@ class _PendingSyncChip extends StatelessWidget {
           ),
           const SizedBox(width: 4),
           Text(
-            '$count pending',
+            '$count ${'pending'.tr}',
             style: const TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,

@@ -72,10 +72,16 @@ class PdfReportService {
     final image = imageBytes != null ? pw.MemoryImage(imageBytes) : null;
     final logo = await _loadLogo();
     final result = analysis.result;
-    final dateFmt = DateFormat('MMMM d, y · HH:mm').format(analysis.capturedAt);
+    final dateFmt = _formatDate(analysis.capturedAt);
 
+    // H03/H04 (QA cycle 1): the previous single `pw.Page` overflowed A4
+    // once the 1.6-aspect photo was laid out, so the metadata grid
+    // (body region + capture date) and the TRIAGE-ONLY DISCLAIMER footer
+    // were silently clipped off the bottom of the page. `MultiPage`
+    // flows content onto a second page if needed and pins the
+    // disclaimer as a footer on every page, so it can never be dropped.
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageTheme: pw.PageTheme(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 24),
@@ -84,22 +90,21 @@ class PdfReportService {
             child: pw.Container(color: _kBrandViolet),
           ),
         ),
-        build: (ctx) => pw.Column(
-          crossAxisAlignment: pw.CrossAxisAlignment.stretch,
-          children: [
-            _header(logo),
-            pw.SizedBox(height: 18),
-            _heroRisk(result),
-            pw.SizedBox(height: 14),
-            if (image != null) _imageCard(image),
-            if (image != null) pw.SizedBox(height: 14),
-            _confidenceCard(result),
-            pw.SizedBox(height: 14),
-            _metadataGrid(analysis, dateFmt),
-            pw.Spacer(),
-            _footer(analysis.id),
-          ],
+        footer: (ctx) => pw.Padding(
+          padding: const pw.EdgeInsets.only(top: 12),
+          child: _footer(analysis.id),
         ),
+        build: (ctx) => [
+          _header(logo),
+          pw.SizedBox(height: 18),
+          _heroRisk(result),
+          pw.SizedBox(height: 14),
+          _metadataGrid(analysis, dateFmt),
+          pw.SizedBox(height: 14),
+          if (image != null) _imageCard(image),
+          if (image != null) pw.SizedBox(height: 14),
+          _confidenceCard(result),
+        ],
       ),
     );
 
@@ -274,7 +279,7 @@ class PdfReportService {
         children: [
           pw.Container(
             width: 4,
-            height: 110,
+            height: 220,
             decoration: pw.BoxDecoration(
               color: _kBrandViolet,
               borderRadius: pw.BorderRadius.circular(2),
@@ -298,9 +303,9 @@ class PdfReportService {
                 pw.ClipRRect(
                   horizontalRadius: 10,
                   verticalRadius: 10,
-                  child: pw.AspectRatio(
-                    aspectRatio: 1.6,
-                    child: pw.Image(image, fit: pw.BoxFit.cover),
+                  child: pw.SizedBox(
+                    height: 200,
+                    child: pw.Image(image, fit: pw.BoxFit.contain),
                   ),
                 ),
               ],
@@ -421,7 +426,7 @@ class PdfReportService {
   /// to give the page a touch of rhythm.
   pw.Widget _metadataGrid(LesionAnalysis a, String date) {
     final entries = <(String, String, PdfColor)>[
-      ('Body region'.tr, a.bodyRegion ?? '—', _kBrandViolet),
+      ('Body region'.tr, a.bodyRegion?.tr ?? '—', _kBrandViolet),
       ('Captured at'.tr, date, _kBrandSky),
       if (a.distanceCm != null)
         ('Distance'.tr, '${a.distanceCm!.toStringAsFixed(1)} cm',
@@ -557,6 +562,16 @@ class PdfReportService {
   }
 
   // ── Helpers ───────────────────────────────────────────────────────
+
+  /// Capture date in the active UI language. Falls back to the default
+  /// locale if the intl date symbols for it are not loaded.
+  String _formatDate(DateTime at) {
+    try {
+      return DateFormat('d MMMM y · HH:mm', currentLanguageCode()).format(at);
+    } catch (_) {
+      return DateFormat('y-MM-dd · HH:mm').format(at);
+    }
+  }
 
   PdfColor _riskColor(WarningLevel level) {
     switch (level) {

@@ -59,9 +59,23 @@ class ForgotPasswordSuccessScreen extends StatelessWidget {
                       color: AppColors.hintText,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  // H07 (QA cycle 1): Firebase sends the reset link from a
+                  // noreply sender that institutional inboxes often move
+                  // to spam/quarantine.
+                  Text(
+                    'If it does not arrive within a few minutes, check your spam or junk folder.'.tr,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontFamily: 'Poppins',
+                      fontSize: 14,
+                      height: 1.4,
+                      color: AppColors.hintText,
+                    ),
+                  ),
                   const Spacer(),
                   SkeenButton.primary(
-                    label: 'Back to login',
+                    label: 'Back to login'.tr,
                     onPressed: () => context.go('/login'),
                   ),
                   const SizedBox(height: 24),

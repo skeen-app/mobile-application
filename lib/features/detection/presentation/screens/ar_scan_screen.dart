@@ -628,7 +628,7 @@ class _ArScanScreenState extends ConsumerState<ArScanScreen>
             children: [
               _SecondaryAction(
                 icon: Icons.photo_library_outlined,
-                label: 'Gallery',
+                label: 'Gallery'.tr,
                 onTap: () => context.pushNamed('upload-photo'),
               ),
               ScanCaptureButton(

@@ -1027,21 +1027,6 @@ class _ScanDetailSheet extends ConsumerWidget {
   final ScanHistoryEntry entry;
   final VoidCallback onOpenFull;
 
-  static const _months = [
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cropped = ref.watch(scanThumbnailProvider(entry.id));
@@ -1099,7 +1084,7 @@ class _ScanDetailSheet extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          entry.bodyPartLabel,
+                          entry.bodyPartLabel.tr,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1156,11 +1141,7 @@ class _ScanDetailSheet extends ConsumerWidget {
     );
   }
 
-  String _formatDate(DateTime at) {
-    final day = at.day.toString().padLeft(2, '0');
-    final month = _months[at.month - 1];
-    return '$month $day, ${at.year}';
-  }
+  String _formatDate(DateTime at) => formatShortDate(at);
 }
 
 class _RiskPill extends StatelessWidget {

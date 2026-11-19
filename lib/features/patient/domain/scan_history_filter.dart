@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'body_region.dart';
 import 'risk_level.dart';
 import 'scan_history_entry.dart';
@@ -12,13 +13,13 @@ enum ScanHistoryDateRange {
   String get label {
     switch (this) {
       case ScanHistoryDateRange.all:
-        return 'All time';
+        return 'All time'.tr;
       case ScanHistoryDateRange.last7Days:
-        return 'Last 7 days';
+        return 'Last 7 days'.tr;
       case ScanHistoryDateRange.last30Days:
-        return 'Last 30 days';
+        return 'Last 30 days'.tr;
       case ScanHistoryDateRange.last6Months:
-        return 'Last 6 months';
+        return 'Last 6 months'.tr;
     }
   }
 

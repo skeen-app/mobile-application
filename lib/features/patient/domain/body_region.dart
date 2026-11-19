@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -41,11 +42,11 @@ enum BodyRegionGroup {
   String get label {
     switch (this) {
       case BodyRegionGroup.head:
-        return 'Head';
+        return 'Head'.tr;
       case BodyRegionGroup.chest:
-        return 'Chest';
+        return 'Chest'.tr;
       case BodyRegionGroup.legs:
-        return 'Legs';
+        return 'Legs'.tr;
     }
   }
 

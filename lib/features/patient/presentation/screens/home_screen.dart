@@ -206,7 +206,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 spotlightCenter: scanCenter,
                 spotlightRadius: 28,
                 title: 'Start a Scan'.tr,
-                description: 'Tap the Scan button to begin analyzing a mole on your skin.',
+                description: 'Tap the Scan button to begin analyzing a mole on your skin.'.tr,
                 onSkip: () => ref.read(tutorialControllerProvider.notifier).skip(),
               ),
             ),
@@ -247,12 +247,12 @@ class _TemperatureSlot extends StatelessWidget {
 
   String _describe(Object error) {
     if (error is LocationPermissionDeniedException) {
-      return 'Enable location to see your local UV index';
+      return 'Enable location to see your local UV index'.tr;
     }
     if (error is LocationServicesDisabledException) {
-      return 'Location services are off on this device';
+      return 'Location services are off on this device'.tr;
     }
-    return 'Could not load weather right now';
+    return 'Could not load weather right now'.tr;
   }
 }
 

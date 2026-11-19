@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import '../../../core/localization/locale_controller.dart';
 import '../../../core/logger/app_logger.dart';
 import '../domain/reminder.dart';
 
@@ -127,7 +128,9 @@ class LocalNotificationService {
     Future<void> attempt(AndroidScheduleMode mode) {
       return _plugin.zonedSchedule(
         reminder.notificationId,
-        reminder.title,
+        // H08: default titles are stored as English keys; translate at
+        // schedule time so the tray notification follows the UI language.
+        reminder.title.tr,
         body,
         scheduled,
         details,
@@ -183,11 +186,11 @@ class LocalNotificationService {
   String _bodyFor(Reminder r) {
     switch (r.type) {
       case ReminderType.newScan:
-        return 'Time to capture a new lesion in skeen.';
+        return 'Time to capture a new lesion in skeen.'.tr;
       case ReminderType.rescan:
-        return 'Re-scan the lesion you wanted to monitor.';
+        return 'Re-scan the lesion you wanted to monitor.'.tr;
       case ReminderType.selfExamination:
-        return 'Take five minutes for a head-to-toe self-examination.';
+        return 'Take five minutes for a head-to-toe self-examination.'.tr;
     }
   }
 }

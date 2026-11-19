@@ -37,6 +37,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   void initState() {
     super.initState();
     _searchController.text = ref.read(scanHistorySearchProvider);
+    // H02: always refetch when History is opened so a change made on
+    // another screen is visible without restarting the app.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(scanHistoryProvider);
+    });
   }
 
   @override

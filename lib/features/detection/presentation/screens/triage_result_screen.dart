@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart' show DateFormat;
 
 import '../../../../core/logger/app_logger.dart';
 import '../../../../core/network/api_exception.dart';
@@ -80,7 +79,12 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     setState(() => _exporting = true);
     try {
       await PdfReportService().shareReport(
-        analysis: analysis.copyWithImage(widget.capturedImageBytes),
+        // H03: fall back to the region passed by the caller when the
+        // stored aggregate has none yet (region picked after capture).
+        analysis: analysis.copyWithImage(
+          widget.capturedImageBytes,
+          bodyRegionOverride: analysis.bodyRegion ?? widget.bodyRegion,
+        ),
         imageBytes: widget.capturedImageBytes,
       );
     } catch (e) {
@@ -112,8 +116,12 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
     setState(() => _deleting = true);
     final scanId = widget.analysisId;
     final analysis = _analysis;
-    final wasUploaded =
-        analysis != null && (analysis.pendingUpload == false);
+    // A local-only row (cloud backup off) also has pendingUpload == false
+    // but never reached the cloud — it must not go through the API delete
+    // (offline that would leave it queued as a phantom cloud deletion).
+    final wasUploaded = analysis != null &&
+        analysis.pendingUpload == false &&
+        !analysis.localOnly;
     var pendingCloudDelete = false;
 
     final repo = ref.read(lesionRepositoryProvider);
@@ -415,8 +423,8 @@ class _TriageResultScreenState extends ConsumerState<TriageResultScreen> {
 
   Widget _buildMetadataTiles(LesionAnalysis analysis) {
     final bodyRegion =
-        widget.bodyRegion ?? analysis.bodyRegion ?? 'Not set'.tr;
-    final capturedAt = DateFormat('MMM d, y').format(analysis.capturedAt);
+        (widget.bodyRegion ?? analysis.bodyRegion)?.tr ?? 'Not set'.tr;
+    final capturedAt = formatShortDate(analysis.capturedAt);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 21),
       child: Row(
@@ -727,14 +735,15 @@ class _DeleteConfirmDialog extends StatelessWidget {
 extension _LesionAnalysisExt on LesionAnalysis {
   /// Lightweight rebuild including the JPEG bytes — used by the PDF
   /// service which expects them on the aggregate.
-  LesionAnalysis copyWithImage(Uint8List image) => LesionAnalysis(
+  LesionAnalysis copyWithImage(Uint8List image, {String? bodyRegionOverride}) =>
+      LesionAnalysis(
         id: id,
         patientId: patientId,
         result: result,
         anchor: anchor,
         boundingBox: boundingBox,
         capturedAt: capturedAt,
-        bodyRegion: bodyRegion,
+        bodyRegion: bodyRegionOverride ?? bodyRegion,
         distanceCm: distanceCm,
         imageBytes: image,
         pendingUpload: pendingUpload,

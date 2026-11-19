@@ -55,7 +55,7 @@ class SkeenBottomNav extends StatelessWidget {
                 Expanded(
                   child: _NavItem(
                     asset: 'assets/images/nav/home_icon.svg',
-                    label: 'Home',
+                    label: 'Home'.tr,
                     active: activeTab == SkeenNavTab.home,
                     onTap: () => onTabSelected(SkeenNavTab.home),
                   ),
@@ -63,7 +63,7 @@ class SkeenBottomNav extends StatelessWidget {
                 Expanded(
                   child: _NavItem(
                     asset: 'assets/images/nav/history_icon.svg',
-                    label: 'History',
+                    label: 'History'.tr,
                     active: activeTab == SkeenNavTab.history,
                     onTap: () => onTabSelected(SkeenNavTab.history),
                   ),
@@ -77,7 +77,7 @@ class SkeenBottomNav extends StatelessWidget {
                 Expanded(
                   child: _NavItem(
                     asset: 'assets/images/nav/experts_icon.svg',
-                    label: 'Insights',
+                    label: 'Insights'.tr,
                     active: activeTab == SkeenNavTab.experts,
                     onTap: () => onTabSelected(SkeenNavTab.experts),
                   ),
@@ -85,7 +85,7 @@ class SkeenBottomNav extends StatelessWidget {
                 Expanded(
                   child: _NavItem(
                     asset: 'assets/images/nav/profile_icon.svg',
-                    label: 'Profile',
+                    label: 'Profile'.tr,
                     active: activeTab == SkeenNavTab.profile,
                     onTap: () => onTabSelected(SkeenNavTab.profile),
                   ),

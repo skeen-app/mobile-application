@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -14,11 +15,11 @@ enum RiskLevel {
   String get label {
     switch (this) {
       case RiskLevel.low:
-        return 'Low Risk';
+        return 'Low Risk'.tr;
       case RiskLevel.medium:
-        return 'Medium Risk';
+        return 'Medium Risk'.tr;
       case RiskLevel.high:
-        return 'High Risk';
+        return 'High Risk'.tr;
     }
   }
 

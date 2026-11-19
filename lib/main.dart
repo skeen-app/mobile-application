@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/localization/locale_controller.dart';
@@ -23,6 +26,8 @@ import 'features/reminders/application/reminders_controller.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  // H08: load es/en date symbols so dates follow the UI language.
+  await initializeDateFormatting();
 
   // Federated sign-in (Google) is Android-only in this iteration. On
   // iOS the GoogleService-Info.plist isn't shipped yet so we skip the
@@ -60,10 +65,32 @@ class SkeenApp extends ConsumerStatefulWidget {
 
 class _SkeenAppState extends ConsumerState<SkeenApp>
     with WidgetsBindingObserver {
+  StreamSubscription<void>? _scanStoreSub;
+  Timer? _scanStoreDebounce;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    // H02 (QA cycle 1): History, body map and the pending badge used to
+    // refresh only where a screen remembered to invalidate them (the
+    // gallery flow never did), so new scans, "Not synced" rows and
+    // deletions appeared only after an app restart. Every write to the
+    // local scan store now funnels through one listener. Short debounce
+    // so a burst (save + markUploaded) triggers a single refetch.
+    final scanStore = ref.read(lesionRepositoryProvider);
+    if (scanStore is SecureLesionRepository) {
+      _scanStoreSub = scanStore.changes.listen((_) {
+        _scanStoreDebounce?.cancel();
+        _scanStoreDebounce = Timer(const Duration(milliseconds: 150), () {
+          if (!mounted) return;
+          ref.invalidate(pendingScanCountProvider);
+          ref.invalidate(scanHistoryProvider);
+          ref.invalidate(lesionSummariesProvider);
+        });
+      });
+    }
 
     // Wire the post-capture hook so a fresh scan: (a) refreshes the
     // history + body-map projections, and (b) attempts an immediate
@@ -171,6 +198,8 @@ class _SkeenAppState extends ConsumerState<SkeenApp>
 
   @override
   void dispose() {
+    _scanStoreDebounce?.cancel();
+    _scanStoreSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

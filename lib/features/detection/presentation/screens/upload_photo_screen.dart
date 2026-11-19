@@ -85,7 +85,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
         setState(() {
           _picking = false;
           _permissionBlocked = true;
-          _error = 'Gallery access is needed to upload a photo.';
+          _error = 'Gallery access is needed to upload a photo.'.tr;
         });
         return;
       }
@@ -103,7 +103,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       if (!mounted) return;
       setState(() {
         _picking = false;
-        _error = 'Could not open the gallery: $e';
+        _error = '${'Could not open the gallery'.tr}: $e';
       });
       return;
     }
@@ -277,7 +277,7 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
       if (!mounted) return;
       setState(() {
         _analyzing = false;
-        _error = 'Analysis failed. Please try again.';
+        _error = 'Analysis failed. Please try again.'.tr;
       });
     }
   }
@@ -316,9 +316,9 @@ class _UploadPhotoScreenState extends ConsumerState<UploadPhotoScreen> {
 
   Widget _buildBody() {
     if (_permissionBlocked) return _buildPermissionBlocked();
-    if (_picking) return _buildLoading('Opening your gallery…');
+    if (_picking) return _buildLoading('Opening your gallery…'.tr);
     if (_previewBytes == null) {
-      return _buildLoading('Waiting for your selection…');
+      return _buildLoading('Waiting for your selection…'.tr);
     }
     return _buildPreviewAndAnalyze();
   }
@@ -562,7 +562,7 @@ class _RegionTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      region ?? 'Tap to select',
+                      region?.tr ?? 'Tap to select'.tr,
                       style: TextStyle(
                         fontFamily: 'Poppins',
                         fontWeight: FontWeight.w500,

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:printing/printing.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../../core/theme/app_colors.dart';
@@ -25,6 +26,7 @@ import '../../domain/capture_roi.dart';
 import '../../domain/capture_telemetry.dart';
 import '../../domain/device_eligibility.dart';
 import '../../domain/ports.dart';
+import '../../infrastructure/marker_card_pdf.dart';
 import '../../infrastructure/scan_camera_service.dart';
 import '../widgets/body_region_picker.dart';
 import '../widgets/camera_controls.dart';
@@ -408,6 +410,20 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
     );
   }
 
+  /// Opens the printable reference card (A4, print at 100 %) in the
+  /// system share / save sheet.
+  Future<void> _shareMarkerCard() async {
+    try {
+      final bytes = await buildMarkerCardPdf();
+      await Printing.sharePdf(bytes: bytes, filename: 'skeen-marker-card.pdf');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${'Could not generate PDF'.tr}: $e')),
+      );
+    }
+  }
+
   Future<void> _navigateToTriage(DetectionState state) async {
     if (state.savedAnalysisId == null || state.capturedImageBytes == null) {
       return;
@@ -566,42 +582,52 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
                     streamFrameSize: _camera.previewFrameSize,
                   ),
 
-                // Subtle disclaimer: AR is not available on this device.
+                // H01 (QA cycle 1): this pill used to read "AR not
+                // supported on this device", which led the evaluators to
+                // log the capture as blocked by AR. This flow does not need
+                // AR — it needs the printed reference card (CP006/CP007
+                // precondition). The pill now says so and opens the
+                // printable card, generated from the same marker definition
+                // the detector uses.
                 Positioned(
                   top: 12,
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        border: Border.all(
-                          color: AppColors.violetaOscuro.withValues(alpha: 0.6),
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 12,
-                            color: AppColors.hintText,
+                    child: GestureDetector(
+                      onTap: _shareMarkerCard,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.55),
+                          border: Border.all(
+                            color:
+                                AppColors.violetaOscuro.withValues(alpha: 0.6),
                           ),
-                          SizedBox(width: 6),
-                          Text(
-                            'AR not supported on this device'.tr,
-                            style: TextStyle(
-                              fontFamily: 'Poppins',
-                              fontWeight: FontWeight.w500,
-                              fontSize: 10.5,
-                              letterSpacing: 0.1,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.qr_code_2,
+                              size: 12,
                               color: AppColors.hintText,
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 6),
+                            Text(
+                              'Guided capture with reference card · Get the card'.tr,
+                              style: TextStyle(
+                                fontFamily: 'Poppins',
+                                fontWeight: FontWeight.w500,
+                                fontSize: 10.5,
+                                letterSpacing: 0.1,
+                                color: AppColors.hintText,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -727,7 +753,7 @@ class _ScanAMoleScreenState extends ConsumerState<ScanAMoleScreen>
             children: [
               _SecondaryAction(
                 icon: Icons.photo_library_outlined,
-                label: 'Gallery',
+                label: 'Gallery'.tr,
                 onTap: () => context.pushNamed('upload-photo'),
               ),
               ScanCaptureButton(

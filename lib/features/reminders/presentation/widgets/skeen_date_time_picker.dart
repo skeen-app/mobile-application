@@ -188,10 +188,6 @@ class _MonthHeader extends StatelessWidget {
   final VoidCallback onPrev;
   final VoidCallback onNext;
 
-  static const _months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
-  ];
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +207,7 @@ class _MonthHeader extends StatelessWidget {
         Expanded(
           child: Center(
             child: Text(
-              '${_months[month.month - 1]} ${month.year}',
+              formatMonthYear(month),
               style: const TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -246,7 +242,10 @@ class _CalendarGrid extends StatelessWidget {
   final DateTime minimum;
   final ValueChanged<DateTime> onSelect;
 
-  static const _weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  // H08: Monday-first initials in the active language.
+  static List<String> get _weekdayLabels => currentLanguageCode() == 'es'
+      ? const ['L', 'M', 'X', 'J', 'V', 'S', 'D']
+      : const ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
   @override
   Widget build(BuildContext context) {

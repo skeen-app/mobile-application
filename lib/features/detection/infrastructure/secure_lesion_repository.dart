@@ -38,6 +38,20 @@ class SecureLesionRepository implements LesionRepositoryPort {
   static const _dbName = 'skeen_detection.db';
   static const _table = 'lesion_analysis';
 
+  /// H02 (QA cycle 1): emits after every write that changes what the
+  /// History / body-map projections should show (save, delete, pending
+  /// deletion, upload flag, region edit, purge). The app root listens and
+  /// invalidates those projections, so a screen never depends on the
+  /// caller remembering to refresh it. `upsertCloudSnapshot` deliberately
+  /// does NOT emit: it runs inside the History fetch itself and would
+  /// otherwise trigger an endless refresh loop.
+  final StreamController<void> _changes = StreamController<void>.broadcast();
+  Stream<void> get changes => _changes.stream;
+
+  void _notifyChanged() {
+    if (!_changes.isClosed) _changes.add(null);
+  }
+
   @override
   Future<void> initialize() async {
     if (_db != null) return;
@@ -159,6 +173,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       row,
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+    _notifyChanged();
   }
 
   @override
@@ -186,6 +201,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
   Future<void> delete(String id) async {
     final db = _requireDb();
     await db.delete(_table, where: 'id = ?', whereArgs: [id]);
+    _notifyChanged();
   }
 
   @override
@@ -213,6 +229,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
     }
     final db = _requireDb();
     await db.delete(_table);
+    _notifyChanged();
   }
 
   @override
@@ -286,6 +303,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyChanged();
   }
 
   @override
@@ -308,6 +326,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyChanged();
   }
 
   @override
@@ -342,6 +361,7 @@ class SecureLesionRepository implements LesionRepositoryPort {
       where: 'id = ?',
       whereArgs: [id],
     );
+    _notifyChanged();
   }
 
   LesionAnalysis _rowToAnalysis(Map<String, Object?> row,

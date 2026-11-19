@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'translations.dart';
@@ -43,10 +44,54 @@ class LocaleController extends StateNotifier<Locale> {
     await prefs.setString('languageCode', newLocale.languageCode);
   }
 
+  /// Public read of the active language code (`es` / `en`) for code
+  /// outside the widget tree (PDF builder, notification payloads).
+  String get languageCode => state.languageCode;
+
   String translate(String key) {
     final map = state.languageCode == 'en' ? enTranslations : esTranslations;
     // If the exact key is not found, return the original key so the UI doesn't break
     return map[key] ?? key;
+  }
+}
+
+/// Active language code, falling back to Spanish (the app default) when
+/// the controller has not been created yet.
+String currentLanguageCode() {
+  try {
+    return LocaleController.instance.languageCode;
+  } catch (_) {
+    return 'es';
+  }
+}
+
+/// H08: dates follow the active UI language ("16 de noviembre de 2026" /
+/// "November 16, 2026"). Falls back to ISO-like text if the intl symbols
+/// for the locale are not loaded.
+String formatLongDate(DateTime at) {
+  try {
+    return DateFormat.yMMMMd(currentLanguageCode()).format(at);
+  } catch (_) {
+    return '${at.year}-${at.month.toString().padLeft(2, '0')}-'
+        '${at.day.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Abbreviated date ("16 nov 2026" / "Nov 16, 2026").
+String formatShortDate(DateTime at) {
+  try {
+    return DateFormat.yMMMd(currentLanguageCode()).format(at);
+  } catch (_) {
+    return formatLongDate(at);
+  }
+}
+
+/// Short month + year header ("noviembre 2026" / "November 2026").
+String formatMonthYear(DateTime at) {
+  try {
+    return DateFormat.yMMMM(currentLanguageCode()).format(at);
+  } catch (_) {
+    return '${at.year}-${at.month.toString().padLeft(2, '0')}';
   }
 }
 

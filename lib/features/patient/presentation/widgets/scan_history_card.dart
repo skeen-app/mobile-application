@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -51,7 +52,7 @@ class ScanHistoryCard extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            entry.bodyPartLabel,
+                            entry.bodyPartLabel.tr,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -103,25 +104,7 @@ class ScanHistoryCard extends StatelessWidget {
     );
   }
 
-  static const List<String> _months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December',
-  ];
-
-  static String _formatDate(DateTime at) {
-    final day = at.day.toString().padLeft(2, '0');
-    return '${_months[at.month - 1]} $day, ${at.year}';
-  }
+  static String _formatDate(DateTime at) => formatLongDate(at);
 }
 
 /// Crops + decrypts the saved scan locally so the history miniature
@@ -228,7 +211,7 @@ class _SyncStatusBadge extends StatelessWidget {
     final icon = isPending
         ? Icons.cloud_upload_outlined
         : Icons.cloud_off_outlined;
-    final label = isPending ? 'Pending' : 'Not synced';
+    final label = isPending ? 'Pending'.tr : 'Not synced'.tr;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),

@@ -176,9 +176,9 @@ class _ReminderScreenState extends ConsumerState<ReminderScreen> {
       if (!result) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Notification permission is required for reminders.',
+              'Notification permission is required for reminders.'.tr,
             ),
           ),
         );
@@ -271,7 +271,7 @@ class _SmartSuggestionCard extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Text(
-                'RECOMMENDED',
+                'RECOMMENDED'.tr,
                 style: TextStyle(
                   fontFamily: 'Poppins',
                   fontWeight: FontWeight.w700,
@@ -284,7 +284,7 @@ class _SmartSuggestionCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            preset.title,
+            preset.title.tr,
             style: const TextStyle(
               fontFamily: 'Poppins',
               fontWeight: FontWeight.w600,
@@ -309,7 +309,7 @@ class _SmartSuggestionCard extends StatelessWidget {
             child: FilledButton.icon(
               onPressed: () => onSchedule(preset),
               icon: const Icon(Icons.alarm_add_outlined, size: 16),
-              label: const Text('Schedule this'),
+              label: Text('Schedule this'.tr),
               style: FilledButton.styleFrom(
                 backgroundColor: preset.accent,
                 foregroundColor: Colors.white,
@@ -339,7 +339,7 @@ class _SmartSuggestionCard extends StatelessWidget {
       return _SuggestedPreset(
         title: 'Run your first scan',
         subtitle:
-            'Capture a lunar today and we will schedule your follow-ups for you.',
+            'Capture a lunar today and we will schedule your follow-ups for you.'.tr,
         accent: AppColors.turquesa,
         type: ReminderType.newScan,
         repeat: ReminderRepeat.none,
@@ -366,8 +366,8 @@ class _SmartSuggestionCard extends StatelessWidget {
       return _SuggestedPreset(
         title: 'Recheck a high-risk lesion in 30 days',
         subtitle:
-            'A scan flagged as high-risk benefits from a tight follow-up loop. '
-            'We suggest re-scanning ${alert.bodyRegion ?? 'the same lunar'}.',
+            '${'A scan flagged as high-risk benefits from a tight follow-up loop. We suggest re-scanning'.tr} '
+            '${alert.bodyRegion?.tr ?? 'the same lunar'.tr}.',
         accent: AppColors.fucsia,
         type: ReminderType.rescan,
         repeat: ReminderRepeat.monthly,
@@ -379,8 +379,9 @@ class _SmartSuggestionCard extends StatelessWidget {
       return _SuggestedPreset(
         title: 'Recheck this lesion in 60 days',
         subtitle:
-            'Atypical patterns deserve a periodic look. Re-scan '
-            '${caution.bodyRegion ?? 'the same lunar'} to compare changes.',
+            '${'Atypical patterns deserve a periodic look. Re-scan'.tr} '
+            '${caution.bodyRegion?.tr ?? 'the same lunar'.tr} '
+            '${'to compare changes.'.tr}',
         accent: AppColors.naranja,
         type: ReminderType.rescan,
         repeat: ReminderRepeat.quarterly,
@@ -391,8 +392,7 @@ class _SmartSuggestionCard extends StatelessWidget {
     return _SuggestedPreset(
       title: 'Routine self-exam in 6 months',
       subtitle:
-          'No concerning patterns lately — keep the habit with a gentle '
-          'half-yearly self-examination.',
+          'No concerning patterns lately — keep the habit with a gentle half-yearly self-examination.'.tr,
       accent: AppColors.turquesa,
       type: ReminderType.selfExamination,
       repeat: ReminderRepeat.quarterly,
@@ -528,7 +528,7 @@ class _ReminderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dateLabel = DateFormat('EEE, MMM d · h:mm a').format(reminder.scheduledAt);
+    final dateLabel = _formatReminderDate(reminder.scheduledAt);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -559,7 +559,7 @@ class _ReminderCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      reminder.title,
+                      reminderDisplayTitle(reminder.title),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -628,16 +628,15 @@ class _EmptyUpcoming extends StatelessWidget {
         border: Border.all(color: const Color(0xFF2A1F5C)),
         borderRadius: BorderRadius.circular(14),
       ),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.alarm_off_outlined,
+          const Icon(Icons.alarm_off_outlined,
               color: AppColors.hintText, size: 22),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              'No reminders scheduled yet. Use the recommended card or '
-              'the "Schedule a reminder" tile above.',
-              style: TextStyle(
+              'No reminders scheduled yet. Use the recommended card or the "Schedule a reminder" tile above.'.tr,
+              style: const TextStyle(
                 fontFamily: 'Poppins',
                 fontSize: 12,
                 height: 1.5,
@@ -730,6 +729,8 @@ class _ReminderSheetState extends State<_ReminderSheet> {
         (s) => s.id == _scanId,
         orElse: () => widget.recentScans.first,
       );
+      // Stored in English so the list can re-translate it on a language
+      // switch (see [reminderDisplayTitle]).
       return 'Re-scan ${match.bodyRegion ?? 'your lunar'}';
     }
     return _type.displayLabel;
@@ -799,7 +800,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
             ),
             const SizedBox(height: 16),
             Text(
-              widget.editing != null ? 'Edit reminder' : 'New reminder',
+              widget.editing != null ? 'Edit reminder'.tr : 'New reminder'.tr,
               style: const TextStyle(
                 fontFamily: 'Poppins',
                 fontWeight: FontWeight.w600,
@@ -808,7 +809,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            const _SubLabel(label: 'Type'),
+            _SubLabel(label: 'Type'.tr),
             const SizedBox(height: 6),
             _TypeSelector(
               value: _type,
@@ -820,7 +821,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
             ),
             if (_type == ReminderType.rescan) ...[
               const SizedBox(height: 14),
-              const _SubLabel(label: 'Which mole?'),
+              _SubLabel(label: 'Which mole?'.tr),
               const SizedBox(height: 6),
               _ScanPicker(
                 scans: widget.recentScans,
@@ -829,13 +830,13 @@ class _ReminderSheetState extends State<_ReminderSheet> {
               ),
             ],
             const SizedBox(height: 14),
-            const _SubLabel(label: 'When'),
+            _SubLabel(label: 'When'.tr),
             const SizedBox(height: 6),
             Row(
               children: [
                 Expanded(
                   child: _PresetChip(
-                    label: '1 week',
+                    label: '1 week'.tr,
                     selected: _isPresetMatch(7),
                     onTap: () =>
                         setState(() => _scheduledAt = _defaultPreset(7)),
@@ -844,7 +845,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: _PresetChip(
-                    label: '1 month',
+                    label: '1 month'.tr,
                     selected: _isPresetMatch(30),
                     onTap: () =>
                         setState(() => _scheduledAt = _defaultPreset(30)),
@@ -853,7 +854,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                 const SizedBox(width: 6),
                 Expanded(
                   child: _PresetChip(
-                    label: '3 months',
+                    label: '3 months'.tr,
                     selected: _isPresetMatch(90),
                     onTap: () =>
                         setState(() => _scheduledAt = _defaultPreset(90)),
@@ -867,7 +868,7 @@ class _ReminderSheetState extends State<_ReminderSheet> {
               onTap: _pickDate,
             ),
             const SizedBox(height: 14),
-            const _SubLabel(label: 'Repeat'),
+            _SubLabel(label: 'Repeat'.tr),
             const SizedBox(height: 6),
             _RepeatSelector(
               value: _repeat,
@@ -899,8 +900,8 @@ class _ReminderSheetState extends State<_ReminderSheet> {
                       ),
                     )
                   : Text(widget.editing != null
-                      ? 'Save changes'
-                      : 'Schedule reminder'),
+                      ? 'Save changes'.tr
+                      : 'Schedule reminder'.tr),
             ),
           ],
         ),
@@ -1025,7 +1026,7 @@ class _TypeRow extends StatelessWidget {
                     ),
                     Text(
                       disabled
-                          ? 'Available once you have at least one scan'
+                          ? 'Available once you have at least one scan'.tr
                           : type.description,
                       style: const TextStyle(
                         fontFamily: 'Poppins',
@@ -1086,7 +1087,7 @@ class _ScanPicker extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    s.bodyRegion ?? 'Lunar',
+                    s.bodyRegion?.tr ?? 'Lunar'.tr,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -1110,7 +1111,7 @@ class _ScanPicker extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    DateFormat('MMM d').format(s.capturedAt),
+                    DateFormat.MMMd(currentLanguageCode()).format(s.capturedAt),
                     style: const TextStyle(
                       fontFamily: 'Poppins',
                       fontSize: 10,
@@ -1178,7 +1179,9 @@ class _DateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = DateFormat('EEE, MMM d, y · h:mm a').format(dateTime);
+    final label =
+        '${DateFormat.yMMMEd(currentLanguageCode()).format(dateTime)} · '
+        '${DateFormat.jm(currentLanguageCode()).format(dateTime)}';
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1241,4 +1244,22 @@ class _RepeatSelector extends StatelessWidget {
           .toList(),
     );
   }
+}
+
+
+/// H08: reminder titles are stored as English keys ("Scan a new mole",
+/// "Re-scan Left Arm"), so the list re-translates them on every build and
+/// a language switch also applies to reminders created earlier.
+String reminderDisplayTitle(String stored) {
+  const rescan = 'Re-scan ';
+  if (stored.startsWith(rescan)) {
+    final target = stored.substring(rescan.length);
+    return '${'Re-scan'.tr} ${target.tr}';
+  }
+  return stored.tr;
+}
+
+String _formatReminderDate(DateTime at) {
+  final lang = currentLanguageCode();
+  return '${DateFormat.MMMEd(lang).format(at)} · ${DateFormat.jm(lang).format(at)}';
 }

@@ -1,3 +1,4 @@
+import 'package:skeen/core/localization/locale_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/application/auth_controller.dart';
@@ -54,7 +55,10 @@ final filteredScanHistoryProvider =
     final filtered = items.where((entry) {
       if (!filter.matches(entry, now)) return false;
       if (query.isEmpty) return true;
-      return entry.bodyPartLabel.toLowerCase().contains(query);
+      // H08: labels are stored in English; match the translated label too
+      // so a Spanish query ("brazo") finds "Left Arm".
+      return entry.bodyPartLabel.toLowerCase().contains(query) ||
+          entry.bodyPartLabel.tr.toLowerCase().contains(query);
     }).toList()
       ..sort((a, b) => b.scannedAt.compareTo(a.scannedAt));
     return filtered;

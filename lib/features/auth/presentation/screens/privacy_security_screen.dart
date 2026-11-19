@@ -120,10 +120,11 @@ Future<void> _onChangePassword(BuildContext context, WidgetRef ref) async {
       SnackBar(
         backgroundColor: AppColors.indigo,
         content: Text(
-          'Instructions sent to ${result.maskedEmail}',
+          '${'Instructions sent to'.tr} ${result.maskedEmail}. '
+          '${'If it does not arrive within a few minutes, check your spam or junk folder.'.tr}',
           style: const TextStyle(color: AppColors.violetaClaro),
         ),
-        duration: const Duration(seconds: 4),
+        duration: const Duration(seconds: 6),
       ),
     );
   } on AuthFailure catch (failure) {
